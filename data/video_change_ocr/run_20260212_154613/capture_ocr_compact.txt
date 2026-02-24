@@ -1,0 +1,436 @@
+[00:00:00] capture=1
+<page_number>0</page_number>
+
+[00:00:30] capture=2
+<table><tr><td>Nathakorn SFC</td><td>sunya(SFC)</td></tr><tr><td>Poy</td><td>Sompong</td></tr><tr><td>wason sangsri</td><td>danchai (SFC)</td></tr><tr><td>SULMAN</td><td>chairuch</td></tr><tr><td>Weerayuth Manjit</td><td>Chatchawal Chua ...</td></tr><tr><td>Pisak Thamma</td><td>kasem</td></tr><tr><td>M Mayuree</td><td>Pim Tipawan</td></tr><tr><td>Thirat Singnan</td><td>นพดล พิมพ์เก</td></tr></table>
+
+N 50 ANNIVERSARY TRANSFORMING FOR UNTERRABLE FUTUR
+
+[00:03:30] capture=3
+<table><tr><th colspan="2" rowspan="3">ลำดับ<th rowspan="3">รายการ<th colspan="8">คุณผู้บริจาค<th colspan="6">คุณครูโรงเรียน<th colspan="5">คุณพ่อตาหาด<th colspan="7">คุณบิดาท่ามาร์ต<th colspan="9">คุณแม่หัวใจสีน้ำเงิน</th></th></th></th></th></th></th></tr><tr><td>BONG</td><td>SAA</td><td>SAAR</td><td>EKA</td><td>ETE</td><td>GTE</td><td>HON</td><td>RORA</td><td>OHO</td><td>PPO</td><td>PRAP</td><td>PRE</td><td>PSA</td><td>PTO</td><td>PUT</td><td>VUA</td><td>WHA</td><td>XIA</td><td>YAO</td><td>ZOO</td><td>AIRA</td><td>CORE</td><td>DAN</td><td>JIB</td><td>KOM</td><td>LOR</td><td>MOT</td><td>NANA</td><td>NAK</td><td>NUAK</td><td>NOAH</td><td>NYASA</td><td>OBRA</td><td>OKLA</td><td>OLGA</td><td>ONE</td><td>OPEL</td><td>PAUL</td><td>PBIAS</td><td>PJOLA</td><td>PLATA</td><td>PMIDA</td><td>PNBA</td><td>POLO</td><td>PORTAL</td><td>QUBIC</td><td>RAGURO</td><td>RATHIN</td><td>REDA</td><td>RISE</td><td>RMAMA</td><td>RSALA</td><td>RTSARA</td><td>SABINA</td><td>SCALA</td><td>SECURE</td><td>SETYA</td><td>TIGER</td><td>TOGEL</td><td>TOPP</td><td>TRITON</td><td>TRUE</td><td>TRUMPH</td><td>TUKAI</td><td>TUNGGI</td><td>UDANG</td><td>URCULA</td><td>USOP</td><td>UTERA</td><td>VERONA</td><td>VICTORINO</td><td>VILA</td><td>VIRGINIA</td><td>VITA</td><td>VIVIDLUX</td><td>VIZCERO</td><td>WEIDER</td><td>WHALE</td><td>WOHLING</td><td>WOODLAND</td><td>WRONG</td><td>XXII</td><td>XXXIII</td><td>XXXXV</td><td>XXXXXXXXX</td><td>XXIX</td><td>XXLI</td><td>XLVIII</td><td>XXCV</td><td>XC</td><td>XD</td><td>XVI</td><td>XVII</td><td>XIX</td><td>XCI</td><td>XCC</td><td>XCD</td><td>XCT</td><td>XDC</td><td>XDV</td><td>XDD</td><td>XDE</td><td>XDF</td><td>XDG</td><td>XDH</td><td>XDI</td><td>XDR</td><td>XDS</td><td>XDT</td><td>XDU</td><td>XDP</td><td>XDZ</td><td>XE</td><td>XF</td><td>XGC</td><td>XGD</td><td>XH</td><td>XIH</td><td>XIJ</td><td>XKK</td><td>XLC</td><td>XMD</td><td>XN</td><td>XOX</td><td>XPC</td><td>XPD</td><td>XPG</td><td>XPI</td><td>XPK</td><td>XPL</td><td>XPP</td><td>XQR</td><td>XSS</td><td>XST</td><td>XSV</td><td>XSW</td><td>XSY</td><td>XTC</td
+
+[00:04:00] capture=4
+รายการเครื่องมือเล็กและอุปกรณ์สำนักงานเสียหาย เดือน ธันวาคม 2567
+
+<table><tr><td>ลำดับ</td><td>รายการ</td><td>ค่าเสียหาย (บาท)</td><td>หน่วยงาน</td><td>อายุการใช้งาน (ปี)</td><td>ผู้เบิกใช้งาน</td><td>หมายเหตุ</td></tr><tr><td colspan="7">**เครื่องมือเล็ก**</td></tr><tr><td colspan="7"><strong>เสีย สามารถซ่อมได้</strong></td></tr><tr><td>1</td><td>เครื่องเจียร์ Makita 7" GA7060 S/N 47983</td><td>600.00</td><td>Skyrise</td><td>-</td><td>ชุดธิราชพล, ชุด DC วิดตร (DC งานสถาบันยศ)</td><td>ไม่มีการจัดส่งมา</td></tr><tr><td>2</td><td>เครื่องเจียร์ Makita 1" GA7060 S/N 0047832</td><td>600.00</td><td>Skyrose</td><td>-</td><td>ชุดธิราชพล, ชุดธิราชพล</td><td>ไม่มีการจัดส่งมา</td></tr><tr><td>3</td><td>ลู่เชื่อมเม็ดถี่ JASIC 300A รุ่น ARCSOBS N129CC25603910055390015</td><td>190.00</td><td>UOB</td><td>-</td><td>ยวดารัตน์ วิเศษ (ณปริชาทิพ)</td><td>ใบพัฒนาระบบความเรียนแคร</td></tr><tr><td>4</td><td>โต๊ะไร้สูบน้ำ (แบบมีลูกกลอย) Mitsubishi 3" No.143</td><td>1,400.00</td><td>Lvin Ramkhamhaeng</td><td>-</td><td>ชุดธิราพัฒน์ (DC ชุดไฟฟ้า), ชุดประกวดตรา (DC ชุดไฟฟ้า)</td><td>ลูกคลอดถูกตัด</td></tr><tr><td>5</td><td>โต๊ะไร้สูบน้ำ (แบบมีลูกกลอย) Mitsubishi 2" No.275</td><td>950.00</td><td>Lvin Ramkhamhaeng</td><td>-</td><td>ชุดธิราพัฒน์ (DC ชุดไฟฟ้า), ชุดประกวดตรา (DC ชุดไฟฟ้า), ชุดสวิงข้อ (ช่างไฟฟ้า)</td><td>สายไฟถูกตัดเหลือความยาวแค่ 1.00 ม.</td></tr><tr><td>6</td><td>โต๊ะไร้สูบน้ำ (แบบมีลูกกลอย) Mitsubishi 2" No.281<br/>**เสีย ซ่อมไม่ได้**</td><td>850.00</td><td>อาคารพักอาศัย 7 ชั้น</td><td>-</td><td>ตามรถ ศรีแขวงพิน (ชุดช่างไฟฟ้า)</td><td>สายไฟถูกตัดเหลือความยาวแค่ 0.80 ม.</td></tr><tr><td>1</td><td>คว้านเขาะกระแทก 3 ระบบ Bosch GBK-B-26 DFR S/N 127014583</td><td>3,240.00</td><td>Skyrose</td><td>2 ปี</td><td>ชุดธิรยุทธ์, ชุด DC วิรัญญา</td><td>ทุ่นและพิสดารใหม่</td></tr><tr><td>2</td><td>โต๊ะไร้
+
+[00:36:30] capture=5
+<table><tr><td></td><th colspan="2">เหสีก + แผงเฟรม<th rowspan="3"><th colspan="5"></th></th></th></tr><tr><td></td><td>รวม เหล็ก + แผง เฟรม</td><td>จำนวนชารุด (ท่อน)</td><td>จํานวนเล่ม เหล็ก ขนาด (ท่อน)</td><td>% ชารุด เหล็กทุกขนาด</td><td>อุปกรณ์นั่งร้าน ที่ใช้งานคงเหลือ รวม</td><td></td><td></td></tr><tr><td>พ.ย.-67</td><td>152</td><td>512</td><td>26,505</td><td>1.93%</td><td>14,101.00</td><td></td><td></td></tr><tr><td>3 ไซม์หางา</td><td>51,737</td><td>147,294.00</td><td>9,660,283.90</td><td>1.47%</td><td>4,064,241.13</td><td></td><td></td></tr><tr><td colspan="2" rowspan="2">ข่าดูด เดือน .. 67</td><td colspan="4">เรื่อยๆ (ไม่เกิน 10%)</td><td></td><td></td></tr><tr><td colspan="2">1) 66GO Niche Pride Ekkamai = 0.44 %</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td colspan="2"></td><td colspan="2">2) 66S0 โรงพยาบาลแปซิฟิค การ์เด้น (66S0) = 2.24 %</td><td></td><td></td><td></td><td></td></tr><tr><td colspan="2"></td><td colspan="2">3) 67LO สํานักงานขาย อัสสถานุณฑ์ หาเวอร์ (เทนลโยธิน) = 27.79 %</td><td></td><td></td><td></td><td></td></tr><tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr><tr><td>ลำดับที่</td><td>ข่าดูด เดือน .. 67</td><td>10</td><td>66G0 Niche Pride Ekkamai</td><td>24</td><td>8,971</td><td>0.27%</td><td>6,555</td><td>73.07%</td><td>2,392</td><td>26.93%</td></tr><tr><td>30</td><td>ธ.ต .- 67</td><td>7,700.00</td><td>66G0 Niche Pride Ekkamai</td><td>฿</td><td>19,460</td><td>0.44%</td><td>฿</td><td>2,193,066</td><td>49.67%</td><td>฿ 2,202,763.46</td><td>50.33%</td></tr><tr><td>41</td><td>ธ.ต .- 67</td><td>110</td><td>66S0 โรงพยาบาลแปซิฟิค การ์เด้น (66S0)</td><td>฿</td><td>456</td><td>2.61%</td><td>฿</td><td>7,546</td><td>43.26%</td><td>฿ 9,442</td><td>56.74%</td></tr><tr><td>41</td><td>ธ.ต .- 67</td><td>฿</td><td>66S0
+
+[00:38:30] capture=6
+<table><tr><td></td><th colspan="2">รวม อุปกรณ์ นั่งร้าน ชำรุด<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></
+
+[00:40:00] capture=7
+<table><tr><th colspan="2">ปี พศ.<td></td><td>ม.ค.</td><td>ก.พ.</td><td>มี.ค.</td><td>เม.ย.</td><td>พ.ค.</td><td>มิ.ย.</td><td>ก.ค.</td><td>ส.ค.</td><td>ก.ย.</td><td>ต.ค.</td><td>พฤศจ.</td><td>ธ.ค.</td><td>GRAPH มล - ชด.</td><td>เหล็ก ชำรุดรวม(เทอน)</td><td>ม.ค .-</td><td>- ธ.ค.</td></th></tr><tr><td>2565</td><td></td><td>172</td><td>1,995</td><td>510</td><td>6,295</td><td>925</td><td>8,298</td><td>1,256</td><td>4,370</td><td>12,315</td><td>12,169</td><td>1,129</td><td>4,849</td><td>54,283</td><td></td><td></td><td></td><td></td></tr><tr><td>2566</td><td></td><td>286</td><td>6,486</td><td>15,408</td><td>5,118</td><td>2,793</td><td>1,256</td><td>5,003</td><td>903</td><td>2,667</td><td>4,180</td><td>1,819</td><td>5,231</td><td>51,150</td><td></td><td></td><td></td><td></td></tr><tr><td>2567</td><td></td><td>1,725</td><td>1,951</td><td>2,541</td><td>732</td><td>1,705</td><td>958</td><td>925</td><td>503</td><td>1,048</td><td>11,714</td><td>2,972</td><td>152</td><td>26,926</td><td></td><td></td><td></td><td></td></tr></table>
+
+**เหล็กชำรุด ... เท่อน**
+
+<table><tr><th colspan="2">ปี พศ.<td></td><td>ม.ค.</td><td>ก.พ.</td><td>มี.ค.</td><td>เม.ย.</td><td>พ.ค.</td><td>มิ.ย.</td><td>ก.ค.</td><td>ส.ค.</td><td>ก.ย.</td><td>ต.ค.</td><td>พฤศจ.</td><td>ธ.ค.</td><td>GRAPH มล - ชด.</td><td>เหล็ก ชำรุดรวม(บาท)</td><td>ม.ค .-</td><td>- ธ.ค.</td><td>มูลค่า</td></th></tr><tr><td>2565</td><td></td><td>$ 31,346.00</td><td>$ 409,680.00</td><td>$ 171,180.00</td><td>$ 2,326,612.34</td><td>$ 116,550.00</td><td>$ 2,358,039.19</td><td>$ 228,362.87</td><td>$ 1,096,820.58</td><td>$ 3,717,901.88</td><td>$ 3,022,553.69</td><td>$ 367,309.40</td><td>$
+
+[00:43:00] capture=8
+ค่าเฉลี่ย อุปกรณ์นั่งร้าน รวม (ใช้งานมี)
+
+<table><tr><td></td><th colspan="2">Average of 3.<br/>%ข้าวตูด<br/>อุปกรณ์<br/>นั่งร้าน ทุก<br/>ขนาด<th rowspan="2">ผลรวมของ 2.<br/>จำนวนช้าวตูด<br/>(บาท)<th colspan="2">ค่าเฉลี่ย<br/>ของ %<br/>ชำุด<br/>อุปกรณ์<br/>นั่งร้าน<br/>ทุก<br/>ขนาด<td>ผลรวมของ 2.</td></th></th></th></tr><tr><td></td><td>650A FLEXI สาธร เจริญนคร</td><td>3.34%</td><td>100,536</td><td>฿</td><td>3,013,473</td><td></td></tr><tr><td>650C A SPACE MEGA (PHASE 2)</td><td>2.64%</td><td>123,557</td><td>฿</td><td>4,683,299</td><td></td><td></td></tr><tr><td>650° โรงแรม CENTRAL AYUTTHAYA</td><td>1.88%</td><td>79,713</td><td>฿</td><td>4,238,367</td><td></td><td></td></tr><tr><td>65KO GROOVE 18</td><td>1.59%</td><td>20,901</td><td>฿</td><td>1,318,499</td><td></td><td></td></tr><tr><td>65LO GROOVE 48</td><td>1.42%</td><td>25,754</td><td>฿</td><td>1,811,561</td><td></td><td></td></tr><tr><td>65QO อาคารจอดรถ 9 ชั้น (แม่น้ำ)</td><td>3.52%</td><td>50,025</td><td>฿</td><td>1,420,635</td><td></td><td></td></tr><tr><td>65QO ONE ALTITUDE</td><td>3.14%</td><td>22,857</td><td>฿</td><td>728,386</td><td></td><td></td></tr><tr><td>66D1 โรงพยาบาล เซเปียเซษ</td><td>2.30%</td><td>25,120</td><td>฿</td><td>1,092,421</td><td></td><td></td></tr><tr><td>66IO ONE SPACE Mall</td><td>1.37%</td><td>13,780</td><td>฿</td><td>1,009,072</td><td></td><td></td></tr><tr><td>66JO CAPPING BEAM (66J0)</td><td>0.00%</td><td>-</td><td>฿</td><td>60,000</td><td></td><td></td></tr><tr><td>66LO งานสร้างชั่วคราว โครงการ มาร์ควิส พญาไท (66L0)</td><td>0.00%</td><td>฿</td><td>8,062</td><td></td><td></td><td></td></tr><tr><td>66PO NEW FACTORY ของ ECO INFINIC CO., LTD (66P0)</td><td>1.65%</td><td>3,653</td><td>฿</td><td>221,470</td><td></td><td></td></tr><tr><td>67FO บ้านบริติช นครปฐม (67F0)</td><td>0.24
+
+[00:44:00] capture=9
+danchai (SFC)
+Sompong
+Kawepong
+สุริยา
+Chokchai Juntep
+
+Marium
+Yuwadee Patihat
+Noparat Dangsakul
+Supasin SFC
+สุขลันติ
+SUTEERA SAWAS...
+Salan
+Dam Kaewudom
+
+[00:45:00] capture=10
+Microsoft Excel (Product Activation Failed) - ความเสียหายของข้อมูล Protection v.12 [Protected View] (Not Responding)
+File Home Insert Page Layout Formulas Data Review View Acrobat
+
+Protected View This file originated from an Internet location and might be unsafe. Click for more details. Enable Editing X
+
+E40+G40
+
+# สรุปความเสียหายของแต่ละหน่วยงาน
+
+<table><tr><th rowspan="3">ลำดับ<th colspan="7" rowspan="3">กลุ่มธุรการ 5%<th colspan="6">กลุ่มหลักประกัน 5%</th></th></th></tr><tr><td>หน่วยงาน</td><th colspan="3">ส่งคืน<td>ทำ MEMO ตัด</td><th colspan="2">ลงชื่อ +MEMO<th colspan="3">ทำ MEMO ตัด<th colspan="2">ลงชื่อ +MEMO</th></th></th></th></tr><tr><td>(A)</td><td>ที่</td><td>เล่ม</td><td>รวม (B)</td><td>(C)</td><td>A-B-C</td><td>%</td><td>(A)</td><td>ที่</td><td>เล่ม</td><td>รวม (B)</td><td>(C)</td><td>A-B-C</td><td>%</td></tr><tr><td>1</td><td>SHARK FIN(87TABI)</td><td>B 379,506.28</td><td>-</td><td>-</td><td>-</td><td>-</td><td>B 379,506.28</td><td>-</td><td>-</td><td>-</td><td>B 59,000.00</td><td>-</td><td>B 59,000.00</td><td>0.00%</td><td>100.00%</td><td>0.00%</td><td>100.00%</td><td>0.00%</td><td>100.00%</td><td>0.00%</td></tr><tr><td>2</td><td>BOONDETER SILOM BANGKOK(57880)<br/>3 อาคาร (87N1L5NL2J57MS)</td><td>B 312,023.95<br/>B 100.00%</td><td>S 43,483.26<br/>S 15.87%</td><td>-</td><td>-</td><td>-</td><td>B 209,626.64<br/>B 11.87%</td><td>-</td><td>-</td><td>-</td><td>B 74,654.88<br/>B 0.00%</td><td>-</td><td>B 74,654.88<br/>B 0.00%</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>0.00%</td></tr><tr><td>3</td><td>โรงพยาบาลแพรกษา 2 (6730)<br/>2 อาคาร (67N1J5T2)</td><td>B 886,473.34<br/>B 100.00%</td><td>-</td><td>-</td><td>-</td><td>-</td><td>B 986,473.34<br/>B 0.00%</td><td>-</td><td>-</td><td>-</td><td>B 120,173.56<br/>B 0.00%</td><td>-</td><td>B 120,173.56<br/>B 0.00%</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>0.00%</td></tr><tr><td>4</td><td>อาหารกลางแจ้งและ
+
+[00:45:30] capture=11
+Microsoft Excel (Product Activation Failed) - ค่าเงินทุนหมูกรุง Protection 9.12 [Protected View] (Not Responding)
+Protected View This file originated from an internet location and might be unsafe. Click for more details. Enable Editing
+
+<table><tr><th colspan="8">สรุปความเสียหายของแต่ละหน่วยงาน<th colspan="6">กลุ่มอื่นๆ<br/>5%</th></th></tr><tr><td rowspan="3"></td><td rowspan="3">หน่วยงาน</td><td rowspan="3">ยูกต่อจอรับเข้า(A)</td><td colspan="3">ส่งถึง<td colspan="3">ทำ MEIO ผิด(C)<br/>คลัง A-B-C</td><td colspan="3">ยืด + MEBD %</td><td rowspan="3">ยึด + MEBD %</td></tr><tr><td>(A)</td><td>เลือก</td><td>รวม(B)</td><td>%</td><td>(C)</td><td>A-B-C</td><td>%</td><td>(A)</td><td>เลือก</td><td>รวม(B)</td><td>%</td></tr><tr><td>SHARK FIN(87AB)</td><td>0.00%<br/>100.00%</td><td>-</td><td>0.00%<br/>0.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td></tr><tr><td>BOONBTS BOLM.BANGKOK(87BB)</td><td>0.00%<br/>100.00%</td><td>43.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td></tr><tr><td>Bangkokbank 2 (87BB)</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td><td>0.00%<br/>100.00%</td></tr><tr><td>ธนาคารทหารไทยธัญชนครุฑ(87
+
+[00:46:00] capture=12
+กรุปความเสียหายของแต่ละหน่วยงาน
+
+<table><tr><th rowspan="3">ลำดับ<th colspan="2" rowspan="3">หน่วยงาน<th colspan="5">กลุ่มอู่ปากน้ำ 3%<th colspan="5">กลุ่มนกฮึ่งรูปรพรรณ 5%</th></th></th></th></tr><tr><td>มูลค่าขอเรียนจํา<br/>(A)</td><th colspan="2">อ่างลัย<td>รวม (B)<br/>C)</td><th colspan="2">มูลค่าขอเรียนจํา<br/>(A)</td><th colspan="2">อ่างลัย<td>รวม (B)<br/>C)</td></th></th></tr><tr><td>%</td><td>A-B-C</td><td>%</td><td>%</td><td>%</td><td>%</td><td>%</td><td>%</td><td>%</td></tr><tr><td>3</td><td>อาคาร เทสโก้โลตัส 2 (67019)</td><td>ห้าง MEGA มิตรภาพ</td><td>108,000.00</td><td>13.87%</td><td>0.00%</td><td>11.87%</td><td>108,000.00</td><td>0.00%</td><td>0.00%</td><td>11.87%</td><td>0.00%</td><td>0.00%</td></tr><tr><td>4</td><td>อาคารเอสซีบี 2 โรงพยาบาลชั้นยี่ (67019)</td><td>ห้าง MEGA มิตรภาพ</td><td>26,529.34</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>26,529.34</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>0.00%</td></tr><tr><td>5</td><td>โรงแรม คอนแทรคเตอร์ โรลพลาซา กรุงเทพฯ ชั้น 6(67019)</td><td>ห้าง MEGA มิตรภาพ</td><td>2,773,084.25</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>2,773,084.25</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>0.00%</td></tr><tr><td>6</td><td>โรงแรม DONDON PRECISION (THAILAND) LTD.</td><td>ห้าง MEGA มิตรภาพ</td><td>31,234.00</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>31,234.00</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>0.00%</td></tr><tr><td>7</td><td>เดอะวันท์ หมากป้อม (67019)</td><td>ห้าง MEGA มิตรภาพ</td><td>4,413,108.25</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>4,413,108.25</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>0.00%</td></tr><tr><td>8</td><td>HOTEL INDOIGO THONGLOB (64K)</td><td>ห้าง MEGA มิตรภาพ</
+
+[00:46:30] capture=13
+<table><tr><th colspan="2" rowspan="3">ลำดับ<th rowspan="3">หน่วยงาน<th colspan="5">กลุ่มอู่ปากน้ำ 3%<th colspan="5">กลุ่มหล่อรูปพรรณ 5%</th></th></th></th></tr><tr><td>มูลค่าขอเรียกเข้า (A)</td><td>สี</td><td>เฉลี่ย</td><td>รวม (B)</td><td>ท่าว MEMO ตัด (C)</td><td>คล้าย A-B-C %</td><td>มูลค่าขอเรียกเข้า (A)</td><td>สี</td><td>เฉลี่ย</td><td>รวม (B)</td><td>ท่าว MEMO ตัด (C)</td><td>คล้าย A-B-C %</td></tr><tr><td>Q53</td><td>-MS4+0S4</td><td></td><td>108.69%</td><td>95.49%</td><td>3.85%</td><td>98.84%</td><td>0.00%</td><td>1.16%</td><td>99.89%</td><td>0.78%</td><td>99.89%</td><td>0.51%</td><td>108.69%</td><td>95.49%</td><td>3.85%</td><td>98.84%</td><td>0.00%</td><td>1.16%</td><td>99.89%</td><td>0.78%</td><td>99.89%</td><td>0.51%</td></tr><tr><td>21</td><td>OCEAN BIORZON PATTAYA (60%)</td><td>B</td><td>1,314,006.00</td><td>A</td><td>6,160,006.00</td><td>B</td><td>38,831.48</td><td>B</td><td>1,397,758.48</td><td>B</td><td>1,733,758.48</td><td>B</td><td>113,039.64</td><td>B</td><td>1,846,818.04</td><td>4.86%</td><td>1,314,006.00</td><td>B</td><td>6,160,006.00</td><td>B</td><td>38,831.48</td><td>B</td><td>1,397,758.48</td><td>B</td><td>1,733,758.48</td><td>B</td><td>113,039.64</td><td>B</td><td>1,846,818.04</td><td>4.86%</td></tr><tr><td>22</td><td>THE ISSARA SATHORN (6GH)</td><td>B</td><td>5,110,006.00</td><td>B</td><td>5,500,006.00</td><td>B</td><td>24,908.00</td><td>B</td><td>228,009.66</td><td>B</td><td>938,268.59</td><td>B</td><td>134,297.82</td><td>B</td><td>1,473,556.51</td><td>11.95%</td><td>5,110,006.00</td><td>B</td><td>5,500,006.00</td><td>B</td><td>24,908.00</td><td>B</td><td>228,009.66</td><td>B
+
+[00:51:30] capture=14
+Pat Yanika SFC
+Thanastha iPhone
+danchai (SFC)
+Marium
+Yuwadee Pathat
+Sompong
+Noparat Dangsakul
+SUPASIN SFC
+SULMAN
+Kaweepong
+Seksan phothijinda
+สุขสันติ
+สุริยา
+ศราวุฒิ พุ่มแก้ว
+SUTEERA SAWAS...
+Dam Kaewudom
+
+[00:52:00] capture=15
+ม "ทุกอุปกรณ์" คงเหลือที่ไซหง่าน (100 % = คืน+ดัดยอด "ครบแล้ว") "เรียงตาม % มาก -น้อย"
+
+<table><tr><td></td><td>%</td><td>สถานะ</td><td>รายละเอียด</td><td>จำนวน</td><td>ราคาต่อหน่วย</td><td>รวม</td></tr><tr><td>23</td><td>6502 Flex เล่าบูน อาคาร A</td><td>100.0%</td><td>47</td><td>Skyrise Avate 64 Facility 1</td><td>99.8%</td><td>70</td><td>67M BOONMITR SILOM BANGKOK ลาดพร้าว 70</td><td>71.7%</td></tr><tr><td>24</td><td>6503 Flex เล่าบูน อาคาร B</td><td>100.0%</td><td>48</td><td>Quintara Mby ZEN PIROM PHONG</td><td>99.9%</td><td>71</td><td>66SBO โรงพยาบาลเปาบีซีเค การ์เด้น (66S)</td><td>71.2%</td></tr><tr><td>25</td><td>6504 Flex เล่าบูน อาคาร C</td><td>100.0%</td><td>49</td><td>Rama IV รัชดาภิเษก อิตสึ</td><td>99.9%</td><td>72</td><td>66EJ TOR SATHORN</td><td>70.9%</td></tr><tr><td>26</td><td>65P The Collection 9 ชั้น (แม่น้ำ)</td><td>100.0%</td><td>50</td><td>Skyrise Avute 64 อาคาร D</td><td>99.8%</td><td>73</td><td>66B0 Nide Moa บางโพ (66B)</td><td>67.2%</td></tr><tr><td>27</td><td>66C One Altitude</td><td>100.0%</td><td>51</td><td>Oceanfront Marquis Phayathai</td><td>99.7%</td><td>74</td><td>67D0 โรงแรม Donpon Precision (67D)</td><td>58.3%</td></tr><tr><td>28</td><td>66C The Collection River Front ลาดพร้าว A1</td><td>100.0%</td><td>52</td><td>Ramada Pattaya</td><td>99.7%</td><td>75</td><td>66K0 HOTEL INDIGO THONGLOR (66K)</td><td>47.5%</td></tr><tr><td>29</td><td>66C The Collection River Front ลาดพร้าว A2</td><td>100.0%</td><td>53</td><td>Skyrose Avute 64 อาคาร สำนักงาน</td><td>99.7%</td><td>76</td><td>66T0 ตลาดสำเพ็ญสยาม โรงพยาบาลกรุงเทพฯ</td><td>45.9%</td></tr><tr><td>30</td><td>66C The Collection River Front ลาดพร้าว A3</td><td>100.0%</td><td>54</td><td>Rama IX ราชดำเนิน สยามพารากอน</td><td>99.7%</td><td>77</td><td>66G0 Niche Pride Ekkasanai</td><td>37.9%</td></tr><tr><td>31</td><td>66C The Collection River Front ลาดพร้าว BI</td><td>100.0%</td><td>55</td><td>Skyrose Avute 64 อาคาร G</td><td>99
+
+[00:52:30] capture=16
+สรุปโครงการที่มีการปรับลดค่าบริหาร 04 05 09
+
+<table><tr><th colspan="6">งบบริหาร โครงสร้าง+สถาปัตย์</th></tr><tr><td>ลำดับ</td><td>ชื่อโครงการ</td><td>ตั้งแต่ครั้งแรก</td><td>งบตั้งแต่นี้ปรับแก้ไข</td><td>ส่วนต่าง</td><td>หมายเหตุ</td></tr><tr><td>A</td><td>งบได้รับการอนุมัติตัว</td><td>1,747,072,007.21</td><td>1,624,932,926.43</td><td>-122,139,080.78</td><td>-6.99%</td></tr><tr><td>1</td><td>Skyrise Avenue Sukhumvit 64</td><td>257,599,823.00</td><td>243,410,068.23</td><td>-14,189,754.77</td><td>-5.51% รอสรุปค่าเคมล</td></tr><tr><td>2</td><td>A SPACE MAGA (Phase 2) ส่วนที่ 2</td><td>53,017,270.00</td><td>46,441,647.94</td><td>-6,575,622.06</td><td>-12.40% ค่าบริหารเกินประมาณ 18.3 ล้าน</td></tr><tr><td>REV.</td><td>อาคารสำนักงาน วี44</td><td>95,575,613.10</td><td>89,256,940.33</td><td>-6,318,672.77</td><td>-6.61% เคลมค่าบริหารได้ แต่ใช้เกิน</td></tr><tr><td>4</td><td>SALAYA ONE</td><td>38,249,740.00</td><td>35,547,837.30</td><td>-2,701,902.70</td><td>-7.06% ค่าบริหารเกินประมาณ 7.5 ล้าน</td></tr><tr><td>5</td><td>โรงแรมเซ็นทรัล ออยธยา</td><td>52,127,110.00</td><td>48,441,600.01</td><td>-3,685,509.99</td><td>-7.07% ค่าบริหารไม่เกิน</td></tr><tr><td>6</td><td>GROOVE Vibes Ladprao 18 (G3)</td><td>14,819,006.00</td><td>14,167,232.11</td><td>-651,773.89</td><td>-4.40% เคลมค่าบริหารได้ แต่ใช้เกิน</td></tr><tr><td>7</td><td>GROOVE SCAPE 48</td><td>22,543,212.80</td><td>22,018,364.42</td><td>-524,848.38</td><td>-2.33% มีเคลมค่าบริหาร</td></tr><tr><td>8</td><td>อาคารจอดรถ 9 ชั้น (แม่น้ำ)</td><td>17,836,352.00</td><td>15,971,301.35</td><td>-1,865,050.65</td><td>-10.4
+
+[00:53:00] capture=17
+สรุปโครงการที่มีการปรับลดค่าบริหาร 04.05.09
+
+<table><tr><th rowspan="2">ลำดับ<th colspan="3">งบบริหาร โครงสร้าง+สถาปัตย์<td></td></th></th></tr><tr><td>ชื่อโครงการ</td><td>ตั้งแต่ครั้งแรก</td><td>ส่วนต่างก่อนแก้ไข</td><td>ส่วนต่าง</td><td>หมายเหตุ</td></tr><tr><td>A</td><td>งบได้รับการอนุมัติแล้ว</td><td>1,747,072,007.21</td><td>1,624,932,926.43</td><td>-122,139,080.78</td><td>-6.99%</td></tr><tr><td>1</td><td>Skyline Avenue Sukhumvit 64</td><td>257,599,823.00</td><td>243,410,088.23</td><td>-14,189,754.77</td><td>-5.51% ขอสรุปคำตอบ</td></tr><tr><td>2</td><td>A SPACE MAGA (Phase 2) ส่วนที่ 2</td><td>53,017,270.00</td><td>48,441,647.94</td><td>-6,575,622.06</td><td>-12.40% คำบริหารเกินประมาณ 18.3 ล้าน</td></tr><tr><td>REV.</td><td>อาคารสำนักงาน WII4</td><td>95,575,613.10</td><td>89,256,940.33</td><td>-6,318,672.77</td><td>-6.61% เคลมค่าบริหารได้ แค่ใช้เกิน</td></tr><tr><td>4</td><td>SALAYA ONE</td><td>38,249,740.00</td><td>35,547,837.30</td><td>-2,701,902.70</td><td>-7.06% คำบริหารเกินประมาณ 7.5 ล้าน</td></tr><tr><td>5</td><td>GROOVE Vibes Ladprao 18 (G3)</td><td>52,127,110.00</td><td>48,441,600.01</td><td>-3,685,509.99</td><td>-7.07% คำบริหารไม่เกิน</td></tr><tr><td>6</td><td>GROOVE SCAPE 48</td><td>22,543,212.80</td><td>22,018,364.42</td><td>-524,849.38</td><td>-2.33% มีเคลมค่าบริหาร</td></tr><tr><td>7</td><td>อาคารจอดรถ 9 ชั้น (แม่น้ำ)</td><td>17,836,352.00</td><td>15,971,301.35</td><td>-1,865,050.65</td><td>-10.46% คำบริหารไม่เกิน</td></tr><tr><td>8</td><td>FLEXI เตาปูน อินเตอร์เชนซ์</td><td>52,314,666.51</td><td>48,215,682.12</td><td>-4,098,984.39</td><td>-7.84% ขอสรุป
+
+[01:03:30] capture=18
+Pim Tippawan
+IT SFC
+
+Yuwadee Pathat
+SFC
+amorn
+คุณสันต์ SFC
+Paichayon Charoe...
+decha
+Anong Khongsom...
+wason sangsri
+
+อานนท์ QA
+NOROJIN RATTANARONG
+มานพ
+Rajprang Chanyarit
+
+[01:04:00] capture=19
+Click on Tools Sign, and Comment to access additional features.
+
+<table><tr><th colspan="2">ผลประเมิน ผู้บริหารโครงการ ประจำปีงบประมาณ 2560<th colspan="3">คณะทำงาน<th colspan="2">จุดเด่นของทีมงาน<th rowspan="2">การพัฒนาตนเอง<th colspan="2">สุขภาพรวม</th></th></th></th></th></tr><tr><td>ลำดับ</td><td>ชื่อ-นามสกุล</td><td>ตำแหน่ง</td><td>ระดับความร่วมมือ</td><td>ข้อเสนอแก้ไขเพิ่มเติม</td><td>แนวทางปรับปรุงให้อย่างสมเหตุสมผล</td><td>ค่าธรรมเนียมที่คาดว่าจะใช้ในการอบรม</td><td>GAP UPDATE</td><td>จำนวนคนที่เข้าร่วม</td><td>ผลงานที่ได้รับไว้แล้ว</td></tr><tr><td>1</td><td>นาย วิชิต</td><td>ธนารักษ์</td><td>B+</td><td>A-</td><td>2</td><td>2</td><td>1</td><td>87%</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td
+
+[01:13:00] capture=20
+# สรุปค่าเก็บงานประจำเดือน ธันวาคม 2567
+
+<table><tr><th rowspan="2">ลำดับ<th colspan="3" rowspan="2">หน่วยงาน<th colspan="3">ค่าใช้จ่ายท้องฟัก<th rowspan="2">รวมเป็นเงิน<br/>บาท<td></td><td></td><td></td></th></th></th></th></tr><tr><td>ลบ Defect</td><td>ผลสัญญา มรพ.</td><td>หัก Retention</td><td>คอมมานต์ฯ</td><td>ลูกค้า</td><td>C</td><td>ลบ Defect</td><td>ผลสัญญา+ชื่น ๆ</td><td>รวมเป็นเงิน</td></tr><tr><td>1</td><td>Quimara Mity Zen</td><td>-</td><td>-</td><td>-</td><td>-</td><td>92,109.54</td><td>17</td><td>3</td><td>1</td><td>12,200.00</td><td>-</td><td>12,200.00</td></tr><tr><td></td><td>อาคาร A</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>3</td><td>1</td><td>1</td><td>12,200.00</td><td>-</td><td>12,200.00</td></tr><tr><td></td><td>อาคาร B</td><td>82,109.54</td><td>-</td><td>-</td><td>-</td><td>92,109.54</td><td>14</td><td>2</td><td>-</td><td>-</td><td>-</td><td>-</td></tr><tr><td>2</td><td>OHE ALTITUDE</td><td>-</td><td>-</td><td>-</td><td>58,432.50</td><td>58,432.50</td><td>2</td><td>5</td><td>25,000.00</td><td>-</td><td>25,000.00</td></tr><tr><td>3</td><td>Vิโรธิน อีกซ์</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>61,793.65</td><td>-</td><td>61,793.65</td></tr><tr><td>4</td><td>Skyrise</td><td>2,453,002.40</td><td>-</td><td>-</td><td>-</td><td>2,453,002.40</td><td>189</td><td>176</td><td>-</td><td>-</td><td>-</td><td>-</td></tr><tr><td></td><td>อาคาร D</td><td>449,813.98</td><td>-</td><td>-</td><td>-</td><td>449,813.98</td><td>65</td><td>2</td><td>273,567.45</td><td>-</td><td>273,567.45</td></tr><tr><td></td><td>อาคาร E</td><td>547,347.65</td><td>-</td><td>-</td><td>-</td><td>547,347.65</td><td>49</td><td>18</td><td>222,830.00</td><td>-</td><td>222,830.00</td></tr><tr><td></td><td>อาคาร F</td><td>834,682.75</td><td>-</
+
+[01:21:00] capture=21
+มูลค่าวัสดุคงเหลือที่หน่วยงานส่งกลับโกดังสุขุมวิท 101 ประจำเดือน ธันวาคม 2567
+
+<table><tr><td>ลำดับ</td><td>หน่วยงาน</td><td>มูลค่าของวัสดุที่ส่งกลับ<br/>(บาท)</td><td>มูลค่าวัสดุที่เสีย<br/>(ใช้งานต่อไม่ได้)</td></tr><tr><td>1</td><td>งานปรับปรุงอาคาร UOB SATHON [66E0]</td><td>56,929.00</td><td>53,529.00</td></tr><tr><td>2</td><td>Niche Mono บางโพ [66M0]</td><td>52,345.41</td><td>-</td></tr><tr><td>3</td><td>อาคารพักอาศัย 7 ชั้น ใต้ดิน 1 ชั้น [67B0]</td><td>2,790.00</td><td>2,790.00</td></tr><tr><td>4</td><td>NEW FACTORY ของ ECO INFINIC CO.,LTD [66P0]</td><td>35,928.26</td><td>-</td></tr><tr><td>5</td><td>Skyrise Avenue Sukhumvit 64 [64N0]</td><td>33,520.00</td><td>31,530.00</td></tr><tr><td>6</td><td>สำนักงานขาย อัสสกาญจน์ ทาวเวอร์ (รามคำแหง)[67K0]</td><td>4,450.00</td><td>-</td></tr><tr><td>7</td><td>สำนักงานขาย อัสสกาญจน์ ทาวเวอร์ (พหลโยธิน)[67LO]</td><td>1,275.63</td><td>-</td></tr><tr><td>8</td><td>QUINTARA MHY ZEN PHROM PHONG [66H0]</td><td>135,632.31</td><td>131,479.05</td></tr><tr><td>9</td><td>THE LIVING RAMKHAMHAENG [66F0]</td><td>87,549.61</td><td>-</td></tr><tr><td>10</td><td>รวมเป็นมูลค่า - สิลล์ [65N0]</td><td>6,040.00</td><td>-</td></tr><tr><td colspan="3">**รวมเป็นมูลค่า (บาท)**</td><td>**416,460.22**</td></tr><tr><td colspan="3"></td><td>**มูลค่าวัสดุที่เสีย (ใช้งานต่อไม่ได้)**</td></tr><tr><td colspan="3"></td><td>**9,543.26**</td></tr></table>
+
+S
+
+[01:22:30] capture=22
+# มูลค่าวัสดุเสียสะสมที่ส่งกลับจากหน่วยงานและภายในโกดังสุขุมวิท 101 ประจำเดือน มกราคม - ธันวาคม 2567
+
+<table><tr><th rowspan="2">ประเภทงาน<th colspan="2">ธ.ค.-67<th rowspan="2">มูลค่าของเสียที่ขายไม่ได้ (ตั้ง)<th rowspan="2"></th></th></th></th></tr><tr><td>ของเสียในส่วนของโคกตัว</td><td>ของเสียจากหน้างาน</td></tr><tr><td>วัสดุงานโครงสร้าง</td><td>-</td><td>-</td><td>36,761.00</td><td>4,964.60</td></tr><tr><td>วัสดุงานสถาปัตย์</td><td>-</td><td>239.26</td><td>66,037.76</td><td>-</td></tr><tr><td>วัสดุสีน้ำเงิน</td><td>-</td><td>3,914.00</td><td>7,519.00</td><td>-</td></tr><tr><td>วัสดุงานระบบไฟฟ้า</td><td>-</td><td>-</td><td>354.00</td><td>-</td></tr><tr><td>วัสดุงานระบบประปา</td><td>-</td><td>-</td><td>-</td><td>-</td></tr><tr><td>วัสดุงานระบบดับเพลิง</td><td>-</td><td>-</td><td>-</td><td>-</td></tr><tr><td>เครื่องมือ (บ้านโดยอุโมง)</td><td>-</td><td>1,990.00</td><td>48,945.00</td><td>7,544.00</td></tr><tr><td>อุปกรณ์สำนักงาน</td><td>-</td><td>3,400.00</td><td>35,425.83</td><td>1,414.20</td></tr><tr><td></td><td>-</td><td>9,543.26</td><td>195,042.59</td><td>13,922.80</td></tr><tr><td></td><td></td><td></td><td></td><td>181,119.79</td></tr></table>
+
+Pongchai Aroonwat
+thaipbs.or.th/news
+S
+
+[01:23:00] capture=23
+มูลค่าวัสดุคงเหลือที่หน่วยงานส่งกลับโกดังสุขุมวิท 101 ประจำเดือน ธันวาคม 2567
+
+<table><tr><td>ลำดับ</td><td>หน่วยงาน</td><td>มูลค่าของวัสดุที่ส่งกลับ<br/>(บาท)</td><td>มูลค่าวัสดุที่เสีย<br/>(ใช้งานต่อได้)</td></tr><tr><td>1</td><td>งานปรับปรุงอาคาร UOB SATHON [66E0]</td><td>56,929.00</td><td>53,529.00</td></tr><tr><td>2</td><td>Niche Mono บางโพ [66M0]</td><td>52,345.41</td><td>-</td></tr><tr><td>3</td><td>อาคารพักอาศัย 7 ชั้น ใต้ดิน 1 ชั้น [67B0]</td><td>2,790.00</td><td>2,790.00</td></tr><tr><td>4</td><td>NEW FACTORY ของ ECO INFINIC CO.,LTD [66P0]</td><td>35,928.26</td><td>-</td></tr><tr><td>5</td><td>Skyrise Avenue Sukhumvit 64 [64N0]</td><td>33,520.00</td><td>31,530.00</td></tr><tr><td>6</td><td>สำนักงานขาย อัสสกาญจน์ ทาวเวอร์ (รามคำแหง)[67K0]</td><td>4,450.00</td><td>-</td></tr><tr><td>7</td><td>สำนักงานขาย อัสสกาญจน์ ทาวเวอร์ (พหลโยธิน)[67L0]</td><td>1,275.63</td><td>-</td></tr><tr><td>8</td><td>QUINTARA MHY ZEN PHROM PHONG [66H0]</td><td>135,632.31</td><td>131,479.05</td></tr><tr><td>9</td><td>THE LIVING RAMKHAMHAENG [66F0]</td><td>87,549.61</td><td>-</td></tr><tr><td>10</td><td>รวมเป็นมูลค่า -</td><td>6,040.00</td><td>6,040.00</td></tr><tr><td colspan="2">รวมเป็นมูลค่า (บาท)</td><td>416,460.22</td><td>406,916.96</td></tr></table>
+
+S
+
+[01:24:30] capture=24
+A02568E คุณวิชิตพร ส่งกลับมาให้ฉันดูที่นี่ เรื่อง อ.ต. 67.xls - Compatibility M...
+
+# สรุปรายการวัสดุกึ่งสังเกตในโค้งและโอนย้ายระหว่างหน่วยงาน เดือน ธันวาคม 2567
+
+<table><tr><td></td><th colspan="3">รายการ<th rowspan="2"></th></th></tr><tr><td>ประเภท</td><td>จำนวนรวม</td><td>มูลค่ารวม (บาท)</td></tr><tr><td>เครื่องมืออื่นๆ</td><td>PA0827000901001สายลมเสียงขนาด 1" (50 ม./ชม.)</td><td>2.00</td><td>14,000.00</td><td></td></tr><tr><td></td><td>PA08030230501พาเลทพลาสติกขนาด 120x100x150 mm.</td><td>10.00</td><td>9,000.00</td><td></td></tr><tr><td></td><td>PA070020201001บินโดยลูกไม้เนียน ทรงเหลี่ยม</td><td>11.00</td><td>8,010.00</td><td></td></tr><tr><td></td><td>PA06010290601ไฟฟ้าแรงสนาม 4" สีเข้ม</td><td>7.00</td><td>3,960.00</td><td></td></tr><tr><td></td><td>PA06010290201ไฟฟ้าแรงสนาม 6"</td><td>2.00</td><td>2,000.00</td><td></td></tr><tr><td></td><td>P37002020201บินโดยลูกไม้เนียน ทรงเหลี่ยม</td><td>3.00</td><td>1,190.00</td><td></td></tr><tr><td></td><td>PA08270103001ระดับน้ำยาว 1.20 m.(48")</td><td>2.00</td><td>1,120.00</td><td></td></tr><tr><td></td><td>P37002020301บินโดยลูกไม้เนียน ทรงเหลี่ยม</td><td>1.00</td><td>640.00</td><td></td></tr><tr><td></td><td>P37002020210บินโดยลูกไม้เนียน ทรงเหลี่ยม</td><td>1.00</td><td>-</td><td></td></tr><tr><td>เครื่องมืออื่นๆ Total</td><td></td><td>40.00</td><td>40,000.00</td><td></td></tr><tr><td>วัสดุงานโครงสร้าง</td><td></td><td></td><td></td><td></td></tr><tr><td>PP070050108201CouperDB 32 mm. ลด DB 20 mm.</td><td>315.00</td><td>25,200.00</td><td></td><td></td></tr><tr><td>PP070050104001CouperDB 25 mm.</td><td>209.00</td><td>10,868.00</td><td></td><td></td></tr><tr><td>PP070050105001CouperDB 26 mm.</td><td>105.00</td><td>9,145.00</td><td></td><td></td></tr><tr><td>PP00
+
+[01:28:00] capture=25
+Napoleon Bissell
+
+[01:28:30] capture=26
+01_รายงานประจำเดือน - มกราคม 2568.pdf - Adobe Acrobat Pro
+
+<table><tr><td></td><th colspan="3">ดังแต่งานคัดเลาะเข็ม)</th></tr><tr><td></td><td></td><td></td><td>อาคาร, ห้องพักรวม 380 ห้อง, พื้นที่ก่อสร้าง GFA = 30,136 ตร.ม., ที่จอดรถ Auto Parking 275 ตัน ที่จอดรถ ด้านนอก 5 คัน</td></tr><tr><td></td><td colspan="3"><b>งานที่ต่อรองราคาแล้ว : รอฟังผล</b></td></tr><tr><td>2</td><td colspan="3"></td></tr><tr><td>2.1</td><td>Embassy Wireless (ถนนวิทยุ), งานเสาเข็ม : By ไพลอน</td><td>เมื่อสรุปราคา<br/>คุณสุชน / คุณเดชา</td><td>อาคารพักอาศัย สูง 41 ชั้น ชั้นใต้ดิน 5 ชั้น, จำนวน 757 ห้อง, พื้นที่ GFA = 63,719 ตร.ม.<br/><u>ประชุมต่อราคารันที่ 24 ธ.ค. 67 (รอฟังผล)</u></td></tr><tr><td>2.2</td><td>Dusit Suite King Square (พระราม 3) งานเสาเข็ม By : ซีฟโก้</td><td>เมื่อสรุปราคา<br/>คุณศรัณย์พงษ์</td><td>Service Apartment และโรงแรม สูง 28 ชั้น จำนวน 1 อาคาร (ห้องสำหรับเช่า 94 ห้อง โรงแรม 60 ห้อง ร้านอาหาร 1 ร้านและที่จอดรถ 201 คัน) พื้นที่ GFA = 35,293 ตร.ม.<br/><u>ประชุมต่อราคารันที่ 23 ธ.ค. 67 (รอฟังผล)</u></td></tr><tr><td>3</td><td colspan="3"><b>งานที่คาดว่าจะสรุปราคา เดือนธันวาคม 2567</b></td></tr><tr><td>3.1</td><td>Flexi ริเวอร์วิว เจริญนคร</td><td>ม.ค. 68<br/>คุณภู่ภักดิ์ / คุณพรัตน์</td><td>คอนโดพักอาศัยสูง 33 ชั้น จำนวน 1 อาคาร, พื้นที่ ก่อสร้างโดยประมาณ 45,088.14 ตร.ม.<br/><u>อื่นเสนอราคารังที่ 4 : วันที่ 18 ธ.ค.67</u></td></tr><tr><td>3.2</td><td>โรงพยาบาล เฉพาะทางกระลูกและข้อ (จ.ชลบุรี)</td><td>16 ม.ค. 68<br/>คุณชีระชัย / .....</td><td>อาคารโรงพยาบาล สูง 3 ชั้น พื้นที่ 6,200 ตร.ม.<br/><u>อื่นเสนอราคารังที่ 1 : วันที่ 9 ธ.ค. 67</u></td></tr></table>
+
+PageNumber="1/2"
+
+[01:30:00] capture=27
+Yuwadee Patihat
+SFC
+
+Poy
+amorn
+คุมสันต์ SFC
+
+SUTHORN WEDUCA
+50th ANNIVERSARY
+SFc
+NORAG PATANAMONET
+Pat Yanika SFC
+
+aman
+decha
+wason sangsri
+Thanasta's iPhone
+danchai (SFC)
+
+ศิลปิน 2016
+Kittanon Pubra
+Sure Pongsupan
+sakthisaek davisangkun
+Rangsit Raksin
+Borapha Chachirat
+Ardhara Nuer
+
+[01:30:30] capture=28
+สรุปงานประจำ ปี 2567.pdf - Adobe Acrobat Pro File Edit View Window Help
+
+อยู่ระหว่างรอฟังผลประมูลงาน 2 โครงการ
+อยู่ระหว่างประมูลงาน 14 โครงการ
+
+<table><tr><td>ลำดับ</td><td>รายชื่อโครงการ</td><td>มูลค่างาน (บาท)</td></tr><tr><td>1</td><td>โรงพยาบาลกรุงเทพ เขาใหญ่</td><td>217,000,000.00</td></tr><tr><td>2</td><td>อาคารพักอาศัย 7 ชั้น ใต้ดิน 1 ชั้น (รวมงานระบบ M&amp;E)</td><td>64,000,000.00</td></tr><tr><td>3</td><td>เอสเซ็นท์ นครปฐม CPN NKT</td><td>371,000,000.00</td></tr><tr><td>4</td><td>โรงพยาบาลกรุงเทพ หัวหิน</td><td>234,000,000.00</td></tr><tr><td>5</td><td>โรงพยาบาลนครธน 2. ซอยเอกชัย 99/1 ถนนเอกชัย (รวมงานระบบ M&amp;E)</td><td>411,500,000.00</td></tr><tr><td>6</td><td>BOONMITR SILOM</td><td>1,249,000,000.00</td></tr><tr><td>7</td><td>Udomuak 21 (รวมงานเสาเข็มและงานระบบ M&amp;E)</td><td>17,300,000.00</td></tr><tr><td>8</td><td>SASA HUAHIN</td><td>430,000,000.00</td></tr><tr><td>9</td><td>อาคารจอดรถยนต์ 2 โรงพยาบาลยันฮี (รวมงานระบบ M&amp;E)</td><td>85,000,000.00</td></tr><tr><td>10</td><td>PLUS PHETKASEM (หาดใหญ่)</td><td>590,000,000.00</td></tr><tr><td>11</td><td>Holiday Inn Express (HIEX ASOKE), SUKHUMVIT 23 (RENOVATE)</td><td>180,830,000.00</td></tr><tr><td>12</td><td>RM1 (Shark Fin)</td><td>2,240,000,000.00</td></tr><tr><td>13</td><td>MARQUIS PHYATHAI</td><td>593,850,000.00</td></tr><tr><td colspan="2">เฉพาะงานระบบ M&amp;E</td><td></td></tr><tr><td>****</td><td>Hyatt House Bangkok Asoke (เฉพาะงานระบบ M&amp;E)</td><td>342,400,000.00</td></tr><tr><td>****</td><td>HOTEL INDIGO THONGLOR (เฉพาะงานระบบ M&amp;E)</td><td>182,970,000.00</td></tr><tr><td colspan="2"></td><td>รวมมูลค่า</td></tr><tr><td colspan="2"></td><td>7,208,850,000.00</td></tr></table>
+
+งานโรงงาน
+
+[01:32:00] capture=29
+ผลการประเมินการทำงานของพนักงานรายวัน ครั้งที่ 4 /2567
+
+<table><tr><td rowspan="3">LEVEL<br/>ลำดับ</td><th colspan="9">L1B<th rowspan="3">ส่วนลด<td></td></th></th></tr><tr><td>L1B</td><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td><td>7</td><td>8</td><td>9</td><td>10</td><td>11</td><td>สอบตก</td></tr><tr><td>หลังลงงาน</td><td>จำนวนคน</td><td>ค่าเร่ง</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr><tr><td>1U</td><td>38</td><td>353</td><td>6</td><td>9</td><td>3</td><td>16</td><td>1</td><td></td><td></td><td></td><td></td><td>1</td><td>2</td><td>6</td></tr><tr><td>1</td><td>2</td><td>363</td><td>2</td><td>1</td><td>1</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>2</td></tr><tr><td>2</td><td>1233</td><td>353</td><td>41</td><td>459</td><td>160</td><td>486</td><td>14</td><td></td><td></td><td></td><td></td><td>8</td><td>4</td><td>11</td><td>49</td><td>41</td></tr><tr><td>3</td><td>147</td><td>367</td><td>4</td><td>9</td><td>28</td><td>90</td><td>2</td><td></td><td></td><td></td><td></td><td>1</td><td>13</td><td></td><td>13</td></tr><tr><td>4</td><td>36</td><td>377</td><td>1</td><td>3</td><td>22</td><td>3</td><td></td><td></td><td></td><td></td><td></td><td>6</td><td>1</td><td>4</td></tr><tr><td>5</td><td>7</td><td>380</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>1</td><td>6</td><td>0</td></tr><tr><td>6</td><td>5</td><td>405</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>1</td><td>10</td><td>0</td></tr><tr><td>7</td><td>5</td><td>430</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>4</td><td>0</td></tr><tr><td>8</td><td>6</td><td>455</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>5</td><td>0</td
+
+[01:33:00] capture=30
+ข้อมูลผลการประเมินดงานรายวัน แยกแต่ละทีม ช่วงเดือน ตุลาคม - ธันวาคม 2567
+
+**SFC**
+*   **ส่วนงานหลังส่งมอบ:** 90.8% (1 คน)
+    *   5.31 % (63 คน) โครงสร้าง 0.04%
+    *   5.04% (62 คน) สภาพเรียบ 2.19%
+    *   5.04% (62 คน) อากาศ 2.38%
+    *   5.04% (62 คน) เหมือง 2.38%
+
+*   **ส่วนงานอื่นๆ:**
+    *   19.81% (20 คน) จัดซื้อ 2.94%
+    *   19.81% (20 คน) จัดจ้าง 2.94%
+    *   19.81% (20 คน) บริหารโครงการ 5.41%
+    *   19.81% (20 คน) ประกันภัย 10.24%
+    *   19.81% (20 คน) การตลาด 3.77%
+    *   19.81% (20 คน) ขายปลีก 2.77%
+
+*   **รวม SFC:** 61.72% (99 คน)
+
+*   **ค่าเฉลี่ย:** 4.26% (64 คน)
+
+**SITE**
+*   **ส่วนงานหลังส่งมอบ:** 99.61% (100 คน)
+    *   5.31% (63 คน) โครงสร้าง 0.04%
+    *   5.04% (62 คน) สภาพเรียบ 2.19%
+    *   5.04% (62 คน) อากาศ 2.38%
+    *   5.04% (62 คน) เหมือง 2.38%
+
+*   **ส่วนงานอื่นๆ:**
+    *   54.47% (56 คน) โครงสร้าง 5.53%
+    *   54.47% (56 คน) สภาพเรียบ 34.57%
+    *   54.47% (56 คน) อากาศ 15.32%
+    *   54.47% (56 คน) เหมือง 5.06%
+
+*   **รวม SITE:** 54.47% (56 คน)
+
+**PROTECTION**
+*   **ส่วนงานหลังส่งมอบ:** 80.39% (82 คน)
+    *   19.81% (20 คน) จัดซื้อ 2.94%
+    *   19.81% (20 คน) จัดจ้าง 2.94%
+    *   19.81% (20 คน) บริหารโครงการ 5.41%
+    *   19.81% (20 คน) ประกันภัย 10.24%
+    *   19.81% (20 คน) การตลาด 3.77%
+    *   19.81% (20 คน) ขายปลีก 2.77%
+
+*   **รวม PROTECTION:** 80.39% (82 คน)
+
+**หมายเหตุ:**
+*   ไม่มีผู้ไม่เข้ารับตำแหน่ง
+*   มีเรือ = มีอยู่ในคู่แค่กับคนเอง
+*   ไม่น้อยกว่าค่าคง
+
+---
+
+Napooobin Panyasuk
+www.motu.com
+www.motu.co.th
+
+[01:34:00] capture=31
+กราฟแสดงเปอร์เซ็นต์ผลประเมิน แต่ละโครงการ ปี 2567 ของ บจก. แสงอาทิตย์สร้าง
+
+สัมพุทธิ = มีข้อไม่คุ้มค่ากับคำแนะนำ
+สี่เขียว = มีข้อคุ้มค่ากับคำแนะนำ
+สีส้ม = มีข้อยากกว่าคำแนะนำ
+
+<table><tr><td></td><td>เปอร์เซ็นต์ความผิดพลาด ตามที่ได้รับในรอบปี 2567</td></tr><tr><td>โดยมา 1</td><td>83.26%</td></tr><tr><td>โดยมา 2</td><td>82.13%</td></tr><tr><td>โดยมา 3</td><td>82.47%</td></tr><tr><td>โดยมา 4</td><td>80.37%</td></tr><tr><td>โดยมา 1</td><td>9.95%</td></tr><tr><td>โดยมา 2</td><td>12.81%</td></tr><tr><td>โดยมา 3</td><td>16.06%</td></tr><tr><td>โดยมา 4</td><td>18.08%</td></tr><tr><td>โดยมา 1</td><td>5.05%</td></tr><tr><td>โดยมา 2</td><td>1.48%</td></tr><tr><td>โดยมา 3</td><td>1.55%</td></tr></table>
+
+Nagayoshi Dourikuit
+Pamoluk
+www.motu.com
+
+<table><caption>เปอร์เซ็นต์ความผิดพลาด ตามที่ได้รับในรอบปี 2567</caption><tr><td>%</td><td>เปอร์เซ็นต์ความผิดพลาด ตามที่ได้รับในรอบปี 2567</td></tr><tr><td>โดยมา 1/2567</td><td>11.13%</td></tr><tr><td>โดยมา 2/2567</td><td>13.86%</td></tr><tr><td>โดยมา 3/2567</td><td>21.83%</td></tr><tr><td>โดยมา 4/2567</td><td>-0.10%</td></tr></table>
+
+[02:00:00] capture=32
+# TIMELINE มติ ครม. 24 ก.ย.2567
+
+**15 วัน**
+16 ธ.ค.-30 ธ.ค.67
+*   **ดำเนินการแล้ว**
+    *   ลงทะเบียน
+        *   การจัดเลือกรองอธิบดีหรือณสถานที่กรรมการจัดหางานกำหนด
+
+**90 วัน**
+31 ธ.ค.67 - 30 มี.ค.68
+*   **กำลังดำเนินการ**
+    *   ขออนุญาตกำงาน
+        *   นายช่างโยนแอบญายาทำงานแทนคนต่างด้าว พร้อมเอกสาร
+            *   เอกสารประกันสุขภาพ/ประกันสังคม
+                *   เอกสารนายจ้าง
+                    *   ชำระค่าธรรมเนียมเมื่อดำรงไว้ในกรมธนบัตร จะได้รับอนุญาตให้ทำงาน 10 ปี
+
+**90 วัน**
+31 มี.ค.68 - 28 เม.ย.68
+*   **เก็บอัตลักษณ์บุคคล**
+    *   คนต่างด้าว ดำเนินการเก็บอัตลักษณ์บุคคล ที่ ๓๒ ณ สถานที่ที่สำนักงานตรวจคนเข้าเมืองกำหนดภายใน 90 วัน
+
+**1 ปี**
+ก็จริงวันที่ 31 มี.ค.69
+*   **กำลังดำเนินการ**
+    *   จัดทำบัตรสีชมพู
+        *   คนต่างด้าว ดำเนินการจัดทำทะเบียนประวัติ (ถ่ายบัตรสีชมพู) ณ สถานที่ที่กรมการปกครองกำหนดภายใน 1 ปี
+
+\*ระยะเวลาและขั้นตอนตามประกาศกระทรวงแรงงาน และ ประกาศกระทรวงมหาดไทย
+
+
+Rayong Imm.
+
+<page_number>- 0 X</page_number>
+
+[02:03:30] capture=33
+<table><tr><th colspan="9">ผลการทดสอบสารเคมี ครั้งที่ 2 ประจำปี พ.ศ. 2568</th></tr><tr><td rowspan="3"></td><td rowspan="3">หน่วยงาน : เจ้าหน้าที่</td><td colspan="7">ค่าเฉลี่ยของกลุ่มตัวอย่าง</td><td rowspan="3">(ร้อยละ)</td></tr><tr><td colspan="3" rowspan="2">ปริมาณ (mL/L)<br/>*ไม่มีมาตรฐาน**</td><td colspan="3" rowspan="2">ค่าเฉลี่ย<br/>*ไม่มีมาตรฐาน**</td><td rowspan="2">จำนวนห้องปฏิบัติการ</td></tr><tr><td>รวมน้ำผึ้ง</td><td>สูตร</td><td>อัญชัน</td><td>หลัก</td><td>แปลงเป็นกราฟ</td><td>P%</td></tr><tr><td></td><td>รวมทั้งหมด</td><td>72</td><td>24</td><td>25</td><td>40</td><td>72</td><td>121</td><td>121</td><td>121</td></tr><tr><td rowspan="10"></td><td rowspan="10">จุดแข็ง</td><td>วิธีทำให้เกิดความสะอาด</td><td>1</td><td>-</td><td>-</td><td>1</td><td>-</td><td>-</td><td>-</td><td>-</td></tr><tr><td>Silver Plus Station</td><td>4</td><td>3</td><td>3</td><td>3</td><td>4</td><td>1</td><td>1</td><td>1</td></tr><tr><td>AQUARINE BE DOPAMINIC</td><td>1</td><td>2</td><td>2</td><td>2</td><td>1</td><td>1</td><td>1</td><td>1</td></tr><tr><td>BAGUE B.V.DOPAMINO</td><td>6</td><td>6</td><td>6</td><td>6</td><td>6</td><td>6</td><td>6</td><td>6</td></tr><tr><td>DNA SOLID LIGAND ELISA</td><td>1</td><td>2</td><td>2</td><td>2</td><td>1</td><td>1</td><td>1</td><td>1</td></tr><tr><td>Nano Antigen Kit</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td></tr><tr><td>TISBONE PRECIPITATION ELISA</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td></tr><tr><td>ทองแดงซิงค์ ตะกอน</td><td>2</td><td>1</td><td>1</td><td>1</td><td>2</td><td>1</td><td>1</td><td>1</td></tr><tr><td>ทองแดงซิงค์ ตะกอน</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td></tr><tr><td>ทองแดงซิงค์ ตะกอน</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td></tr><tr><td rowspan="10"></td><td rowspan="10">จุดอ่อน</td><td>วิธีทำให้เกิดความสะอาด</
+
+[02:08:00] capture=34
+บริษัท แสงฟ้าก่อสร้าง จำกัด
+รายงานตรวจสอบ QA (Quality Assurance)
+ประจำเดือน ธันวาคม 2567
+
+<figure>
+ภาพแสดงหน้าจอโปรแกรม Adobe Acrobat Pro ซึ่งเป็นเอกสารนำเสนอผลงานการตรวจสอบคุณภาพของ "SFO" โดยมีหัวข้อหลักว่า "รายงานตรวจสอบ QA (Quality Assurance)" และระบุวันที่ "ประจำเดือน ธันวาคม 2567" มีโลโก้ SFO อยู่ด้านบนซ้ายและขวาของชื่อบริษัท ส่วนล่างของหน้าจอมีตารางขนาดใหญ่ประกอบด้วยภาพถ่ายหลายภาพที่เกี่ยวข้องกับงานก่อสร้างหรือระบบโครงสร้าง เช่น อาคารสูง โครงการพัฒนาอสังหาริมทรัพย์ เสาเหล็ก และโครงสร้างบางส่วนที่กำลังก่อสร้างหรือปรับแต่ง มีแถบควบคุมเลื่อนไปมาพร้อมตัวเลข "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12" และปุ่มเพิ่มเติมทางด้านขวา นอกจากนี้ยังมีไอคอนเมนูสำหรับการแก้ไข การเปลี่ยนแปลง และการนำออกเป็น PDF รวมถึงปุ่ม "Download Completed"
+</figure>
+
+เมนูด้านซ้าย:
+*   Home
+*   Portfolio
+*   Contact Us
+*   Download Completed
+
+เมนูด้านขวา:
+*   New Document
+*   Add-ons
+*   Help
+
+แถบควบคุม:
+*   1
+*   2
+*   3
+*   4
+*   5
+*   6
+*   7
+*   8
+*   9
+*   10
+*   11
+*   12
+
+ข้อความในแถบที่อยู่:
+*   รายงานที่ได้รับโดยตรงจากแหล่ง Q A
+
+[02:08:30] capture=35
+เอกสารงาน QA ประจำวัน - 4-1-68.pdf - Adobe Acrobat Pro File Edit View Window Help
+
+ผลการประเมินผู้บริหารจัดการ ในด้านคุณภาพ (QA) ประจำหน่วยงาน
+ประจำเดือน ธันวาคม 2567
+QA. LOOP CON'S CHECK LISTS
+
+<table><tr><th colspan="9">รายการบัตรกรรม<th rowspan="3">REMARK</th></th></tr><tr><td>No.</td><td>CONSTRUCTION SITE</td><td>PROJECT MANAGER</td><th colspan="3">1 สิทธิ์<th colspan="3">2 CLUB<td>3 เลขรับ</td><td>4 อู่หมูยนต์</td><td>5 อู่รถเมรา</td><td>6 อู่รถเชียง</td><td>7 TOPPING</td><td>8 กรอบป้อง</td><td>อุดมคต</td></th></th></tr><tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr><tr><td>1</td><td>The UOB STATION</td><td>คุณไพรชนก</td><td>☑</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td></tr><tr><td>2</td><td>The LINX RAM</td><td>คุณศรีนครพงศ์</td><td>☑</td><td>☑</td><td>☐</td><td>-</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td></tr><tr><td>3</td><td>อาคารสำนักงาน V One</td><td>คุณโสภชัย</td><td>☑</td><td>☑</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td></tr><tr><td>4</td><td>NICE MONG BANGKOK</td><td>คุณสัญญา</td><td>☑</td><td>☑</td><td>☐</td><td>C</td><td>C</td><td>C</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td></tr><tr><td>5</td><td>NICE PRIDE KASETTEEN</td><td>คุณสมพล</td><td>☑</td><td>☑</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td><td>☐</td></tr><tr><td>6</td><td>BAN SIRIJAID C OUNGHUIN</td><td>คุณสิงห์</td><td>☑</td><td>☑</td><td>☐</td><td>☐</td><
+
+[02:26:30] capture=36
+เอกสารรายงาน QA ประจำปีงบประมาณ พ.ศ. 2560 - Adobe Acrobat Pro
+
+AFTER (ปัจจุบัน)
+
+17 ธ.ค. 2562 13:37:59
+
+<figure>
+ภาพถ่ายแสดงสภาพแวดล้อมภายในอาคารที่ดูเหมือนโรงงานหรือโรงรถ โดยมีเสาโครงสร้างขนาดใหญ่หลายต้นเรียงรายอยู่ทางซ้ายและขวาของภาพ ตรงกลางเป็นพื้นผิวคอนกรีตกับขอบสีเทาอ่อน มีสายไฟฟ้าพาดผ่าน และมีประตูเหล็กกั้นบางส่วนปรากฏให้เห็นในระยะไกล แสงสว่างจากด้านหลังทำให้เกิดเงาบนพื้น ข้อความ "AFTER (ปัจจุบัน)" กำกับอยู่ด้านบนของภาพ พร้อมระบุเวลาและช่วงเวลา 17 ธ.ค. 2562 เวลา 13:37:59 ซึ่งอาจหมายถึงการถ่ายภาพหลังจากการปรับปรุงหรือเปลี่ยนแปลงสถานะบางอย่าง
+</figure><figure>
+ภาพถ่ายแสดงสภาพแวดล้อมภายในอาคารคล้ายกับภาพแรก แต่มีการมองลงไปตามแนวเดียวกันเพื่อแสดงรายละเอียดที่แตกต่างออกไป โครงสร้างเสาขนาดใหญ่และพื้นผิวคอนกรีตยังคงปรากฏอยู่ แต่ภาพนี้เน้นไปที่เส้นทางเดินยาวที่ทอดยาวไปในห้องกว้างขวางที่มีแสงสลัวลงมา ข้อความ "AFTER (ปัจจุบัน)" กำกับอยู่ด้านบนของภาพ พร้อมระบุเวลาและช่วงเวลา 17 ธ.ค. 2562 เวลา 13:37:59 เช่นกัน ซึ่งบ่งบอกถึงการถ่ายภาพหลังจากการปรับปรุงหรือเปลี่ยนแปลงสถานะ
+</figure>
+
+www.doiad.com
+Auto Shop...
+SITEMAP
+หน่วยงานฯ : Home
+Get Feedback
+Peru SPCO
+
+[02:38:30] capture=37
+*   Home
+*   About Us
+*   Services
+*   Portfolio
+*   Contact
+
+www.example.com
+
+[02:39:00] capture=38
+สรุป งานตรวจสอบคุณภาพ งานสถาปัตยกรรม QC
+
+<table><tr><th rowspan="2">ลำดับ<th rowspan="2">ชื่อหน่วยงาน<th colspan="2">หัวข้อที่ตรวจ<th colspan="2">ผลการตรวจ<th rowspan="2">สรุปผล</th></th></th></th></th></tr><tr><td>จำนวน END Product</td><td>ผลการตรวจ</td><td>สรุปผล</td><td>จำนวน Loop</td><td>ผลการตรวจ</td></tr><tr><td>1</td><td>วพ กรุงเทพ เซาไทย</td><td>15</td><td></td><td>10</td><td>90.00%</td><td>ผ่าน</td></tr><tr><td>2</td><td>วพ แปซิฟิก กานสันท์</td><td>15</td><td></td><td>10</td><td>94.44%</td><td>ผ่าน</td></tr><tr><td>3</td><td>Niche pride เอกมัย</td><td>15</td><td></td><td>10</td><td>95.00%</td><td>ผ่าน</td></tr><tr><td>4</td><td>Niche mono บางโพ</td><td>15</td><td></td><td>10</td><td>88.67%</td><td>ผ่าน</td></tr><tr><td>5</td><td>บ้านพลอากาศ 7 ชั้น</td><td>15</td><td></td><td>10</td><td>90.00%</td><td>ผ่าน</td></tr><tr><td>6</td><td>Irongan Donpon</td><td>15</td><td></td><td>10</td><td>88.00%</td><td>ผ่าน</td></tr><tr><td>7</td><td>Escent มหรปลุม</td><td>15</td><td></td><td>10</td><td>95.45%</td><td>ผ่าน</td></tr><tr><td>8</td><td>Hotel Indio</td><td>15</td><td></td><td>10</td><td>90.90%</td><td>ผ่าน</td></tr><tr><td>9</td><td>วพ กรุงเทพหัวหิน</td><td>15</td><td></td><td>10</td><td>90.00%</td><td>ผ่าน</td></tr><tr><td>10</td><td>Livin Ram</td><td>15</td><td>$8.63%</td><td>ผ่าน</td><td></td><td></td></tr><tr><td>11</td><td>Ramkhambeang Hill</td><td>15</td><td>$9.74%</td><td>ไม่ผ่าน</td><td></td><td></td></tr><tr><td>12</td><td>SKY RISE D</td><td>15</td><td>$4.12%</td><td>ไม่ผ่าน</td><td></td><td></td></tr><tr><td></td><td>SKY RISE E</td><td>15</td><td>0%</td><td>ไม่ผ่าน</td><td></td><td></td></tr><tr><td></td><td>SKY RISE F</td><td>15</td><td>90.47%</td><td>ผ่าน</td><td></td><td></td></tr><tr><td></td><td>SKY RISE G</td><td>15</td><td>80.95%</td><td>ไม่ผ่าน</td><td></td><td></td></tr><tr><td>13</td><td>V One Tower</td><td>15</td><td>92.30%</td><td>ผ่าน</td><td></td><td></td></tr><tr><td>14</td><td>THE Uob</td><td>15</td><
+
+[02:43:00] capture=39
+Niche Mono บางโพ
+
+<figure>
+ภาพแสดงการซ่อมแซมหรือการติดตั้งระบบระบายน้ำ โดยมีวงกลมสีแดงเน้นที่ช่องทางน้ำดินข้างถนนคอนกรีตก่อนการก่อสร้างเพิ่มเติม มีวัสดุและอุปกรณ์สำหรับงานรดน้ำวางอยู่รอบๆ และในบริเวณนี้
+</figure><figure>
+ภาพระยะใกล้อีกภาพหนึ่งของพื้นผิวถนนคอนกรีตที่ได้รับความเสียหายจากฝน อาจเป็นรอยบากหรือน้ำล้นไหลลงมา มีโครงสร้างคล้ายประตูระบายน้ำขนาดเล็กปรากฏอยู่บนพื้นผิวนั้น
+</figure>
+
+File Edit View Window Help
+
+[02:43:30] capture=40
+Niche Mono บางโพ
+
+<figure>
+ภาพแสดงงานก่อสร้างหรือการซ่อมแซมอาคาร มีสามส่วนหลัก:
+1.  **ด้านซ้าย:** เป็นผนังอิฐที่อยู่ภายในอาคาร โดยมีโครงสร้างคอนกรีตเสริมเหล็กเสียหายปรากฏให้เห็นชัดเจนบริเวณฐานของผนัง และมีรอยเปื้อนสีแดงบนพื้นผิว
+2.  **ตรงกลางล่าง:** แสดงโครงสร้างเสาคอนกรีตกั้นทางเข้าหรือทางออกที่ยังไม่มีการปูกระเบื้อง พร้อมสายไฟและร่องระบายน้ำวางอยู่ข้างๆ กำแพงด้านในทำจากอิฐสีขาว
+3.  **ด้านขวา:** เป็นผนังอิฐขนาดใหญ่ที่สมบูรณ์กว่า ส่วนหนึ่งของผนังถูกทาสีขาวแต่ยังคงมีรอยเปื้อนสีแดงเล็กน้อย
+โดยรวมแล้ว ภาพนี้แสดงสภาพความชำรุดและการปรับปรุงแก้ไขของโครงสร้างอาคาร
+</figure>
+
+File Edit View Window Help

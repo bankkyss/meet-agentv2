@@ -1,0 +1,1677 @@
+from __future__ import annotations
+
+import json
+import re
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+from pathlib import Path
+from typing import Any, TypedDict
+
+from langgraph.graph import END, StateGraph
+
+from html_renderer import fallback_render_html, html_has_sections_in_order
+from image_processor import (
+    group_manifest_by_topic,
+    image_to_base64_data_uri,
+    merge_partial_image_outputs,
+    resolve_image_path,
+)
+from llm_client import LLMClient
+from pipeline_utils import (
+    PipelineConfig,
+    PipelineError,
+    build_topic_text,
+    chunked,
+    cosine,
+    ensure_dir,
+    hms_to_sec,
+    load_json,
+    reduce_agent1_maps,
+    sanitize_kg_for_output,
+    save_json,
+    sec_to_hms,
+    timeline_snippet_by_range,
+    fill_template,
+)
+from prompts import (
+    AGENT1_SYS,
+    AGENT1_USR,
+    AGENT2_REDUCE_SYS,
+    AGENT2_REDUCE_USR,
+    AGENT2_SYS,
+    AGENT2_USR,
+    AGENT25_REDUCE_SYS,
+    AGENT25_REDUCE_USR,
+    AGENT25_SYS,
+    AGENT25_USR,
+    AGENT3A_SYS,
+    AGENT3A_USR,
+    AGENT3B_SYS,
+    AGENT3B_USR,
+    AGENT4_EXEC_SYS,
+    AGENT4_EXEC_USR,
+    AGENT4_TOPIC_SYS,
+    AGENT4_TOPIC_USR,
+    AGENT5_SYS,
+    AGENT5_USR,
+    HTML_CSS_JS_BUNDLE,
+)
+
+
+class WorkflowState(TypedDict, total=False):
+    run_id: str
+    artifact_dir: str
+    run_meta: dict[str, Any]
+    transcript: dict[str, Any]
+    config_data: dict[str, Any]
+    ocr_data: dict[str, Any]
+    segments: list[dict[str, Any]]
+    captures: list[dict[str, Any]]
+    resume_cleaned: dict[str, Any]
+    cleaned: dict[str, Any]
+    kg: dict[str, Any]
+    topics: list[dict[str, Any]]
+    topic_map: dict[str, Any]
+    image_by_topic: dict[str, list[dict[str, Any]]]
+    image_manifest_output: dict[str, Any]
+    summaries: dict[str, Any]
+    html: str
+
+
+class MeetingWorkflow:
+    def __init__(self, cfg: PipelineConfig):
+        self.cfg = cfg
+        self.llm = LLMClient(cfg)
+        self.graph = self._build_graph().compile()
+
+    def _artifact_path(self, state: WorkflowState, filename: str) -> Path:
+        return Path(state["artifact_dir"]) / filename
+
+    def _save_json_if_enabled(self, state: WorkflowState, filename: str, data: Any) -> None:
+        if self.cfg.save_intermediate:
+            save_json(self._artifact_path(state, filename), data)
+
+    def _save_html_if_enabled(self, state: WorkflowState, filename: str, html: str) -> None:
+        if self.cfg.save_intermediate:
+            self._artifact_path(state, filename).write_text(html, encoding="utf-8")
+
+    def _append_log(
+        self,
+        run_meta: dict[str, Any],
+        artifact_dir: str | None,
+        message: str,
+        **fields: Any,
+    ) -> None:
+        ts = datetime.now().strftime("%H:%M:%S")
+        field_text = " ".join(f"{k}={v}" for k, v in fields.items())
+        line = f"[{ts}] {message}" + (f" | {field_text}" if field_text else "")
+        print(line)
+        run_meta.setdefault("runtime_logs", []).append(line)
+
+        if self.cfg.save_intermediate and artifact_dir:
+            log_path = Path(artifact_dir) / "runtime.log"
+            with log_path.open("a", encoding="utf-8") as f:
+                f.write(line + "\n")
+
+    def _effective_workers(self, item_count: int) -> int:
+        if item_count <= 1:
+            return 1
+        return max(1, min(self.cfg.pipeline_max_concurrency, item_count))
+
+    def _remove_stutter(self, text: str) -> str:
+        tokens = str(text or "").strip().split()
+        if not tokens:
+            return ""
+        out = [tokens[0]]
+        for tok in tokens[1:]:
+            if tok != out[-1]:
+                out.append(tok)
+        return " ".join(out)
+
+    def _build_slides_from_ocr(self, ocr_subset: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        slides: list[dict[str, Any]] = []
+        for c in ocr_subset:
+            ocr_text = str(c.get("ocr_text", "") or "")
+            lines = [ln.strip() for ln in ocr_text.splitlines() if ln.strip()]
+            title = lines[0] if lines else ""
+            slides.append(
+                {
+                    "timestamp_hms": str(c.get("timestamp_hms", "00:00:00")),
+                    "image_path": str(c.get("image_path", "")),
+                    "ocr_text": ocr_text,
+                    "has_table": "<table" in ocr_text.lower(),
+                    "has_figure": "<figure" in ocr_text.lower(),
+                    "title": title,
+                }
+            )
+        return slides
+
+    def _nearest_slide_context(self, ts: float, slides: list[dict[str, Any]]) -> str | None:
+        best_text: str | None = None
+        best_d = 10**9
+        for s in slides:
+            sec = hms_to_sec(str(s.get("timestamp_hms", "00:00:00")))
+            d = abs(sec - int(ts))
+            if d <= 60 and d < best_d:
+                best_d = d
+                best_text = str(s.get("ocr_text", "") or "")
+        return best_text
+
+    def _compact_ocr_for_agent1(self, ocr_subset: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        compact: list[dict[str, Any]] = []
+        max_snippet_chars = max(120, int(self.cfg.agent1_ocr_snippet_chars))
+
+        for idx, cap in enumerate(ocr_subset, start=1):
+            raw = str(cap.get("ocr_text", "") or "")
+            lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+            title = lines[0] if lines else ""
+            has_table = "<table" in raw.lower()
+            has_figure = "<figure" in raw.lower()
+
+            text_no_html = re.sub(r"<[^>]+>", " ", raw)
+            text_no_html = re.sub(r"\s+", " ", text_no_html).strip()
+            snippet = text_no_html[:max_snippet_chars]
+            if len(text_no_html) > max_snippet_chars:
+                snippet += "..."
+            # Agent1 only needs lightweight slide context; avoid pushing heavy table body text.
+            if has_table and title:
+                snippet = title[:max_snippet_chars]
+
+            compact.append(
+                {
+                    "capture_index": int(cap.get("capture_index", idx) or idx),
+                    "timestamp_hms": str(cap.get("timestamp_hms", "00:00:00") or "00:00:00"),
+                    "timestamp_sec": float(cap.get("timestamp_sec", 0) or 0),
+                    "image_path": str(cap.get("image_path", "") or ""),
+                    "ocr_file_size_bytes": int(cap.get("ocr_file_size_bytes", 0) or 0),
+                    "ocr_skipped_reason": str(cap.get("ocr_skipped_reason", "") or ""),
+                    "has_table": has_table,
+                    "has_figure": has_figure,
+                    "title": title[:220],
+                    # Keep ocr_text key for prompt compatibility, but send only compact snippet.
+                    "ocr_text": snippet,
+                }
+            )
+
+        return compact
+
+    def _chunk_text_by_chars(self, text: str, chunk_size: int = 1000, overlap_ratio: float = 0.10) -> list[str]:
+        t = str(text or "")
+        if not t:
+            return [""]
+        size = max(100, int(chunk_size))
+        overlap = int(size * max(0.0, min(overlap_ratio, 0.9)))
+        step = max(1, size - overlap)
+        if len(t) <= size:
+            return [t]
+        out: list[str] = []
+        i = 0
+        while i < len(t):
+            part = t[i : i + size]
+            if not part:
+                break
+            out.append(part)
+            if i + size >= len(t):
+                break
+            i += step
+        return out
+
+    def _build_ocr_only_payload_for_agent1(self, ocr_subset: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        payload: list[dict[str, Any]] = []
+        for idx, cap in enumerate(ocr_subset, start=1):
+            raw = str(cap.get("ocr_text", "") or "")
+            lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+            title = lines[0] if lines else ""
+            has_table = "<table" in raw.lower()
+            has_figure = "<figure" in raw.lower()
+
+            plain = re.sub(r"<[^>]+>", " ", raw)
+            plain = re.sub(r"\s+", " ", plain).strip()
+            text_chunks = self._chunk_text_by_chars(plain, chunk_size=1000, overlap_ratio=0.10)
+
+            total = len(text_chunks)
+            for cidx, chunk_text in enumerate(text_chunks, start=1):
+                payload.append(
+                    {
+                        "capture_index": int(cap.get("capture_index", idx) or idx),
+                        "chunk_index": cidx,
+                        "chunk_total": total,
+                        "timestamp_hms": str(cap.get("timestamp_hms", "00:00:00") or "00:00:00"),
+                        "timestamp_sec": float(cap.get("timestamp_sec", 0) or 0),
+                        "image_path": str(cap.get("image_path", "") or ""),
+                        "ocr_file_size_bytes": int(cap.get("ocr_file_size_bytes", 0) or 0),
+                        "ocr_skipped_reason": str(cap.get("ocr_skipped_reason", "") or ""),
+                        "has_table": has_table,
+                        "has_figure": has_figure,
+                        "title": title[:220],
+                        "ocr_text": chunk_text,
+                    }
+                )
+        return payload
+
+    def _select_agent1_ocr_subset(
+        self,
+        captures: list[dict[str, Any]],
+        start_sec: float,
+        end_sec: float,
+        window_sec: float = 120.0,
+    ) -> list[dict[str, Any]]:
+        in_window = [
+            c
+            for c in captures
+            if (start_sec - window_sec) <= float(c.get("timestamp_sec", 0) or 0) <= (end_sec + window_sec)
+        ]
+        valid = [c for c in in_window if not str(c.get("ocr_skipped_reason", "") or "").strip()]
+        if not valid:
+            valid = in_window
+
+        mid = (start_sec + end_sec) / 2.0
+        valid.sort(key=lambda c: abs(float(c.get("timestamp_sec", 0) or 0) - mid))
+        max_caps = max(1, int(self.cfg.agent1_ocr_max_captures))
+        return valid[:max_caps]
+
+    def _agent1_chunk_fallback(
+        self,
+        seg_chunk: list[dict[str, Any]],
+        ocr_subset: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        slides = self._build_slides_from_ocr(ocr_subset)
+        timeline: list[dict[str, Any]] = []
+
+        for seg in seg_chunk:
+            start_sec = float(seg.get("start", 0) or 0)
+            text = self._remove_stutter(str(seg.get("text", "") or ""))
+            text = re.sub(r"\s+", " ", text).strip()
+            if not text:
+                continue
+            timeline.append(
+                {
+                    "timestamp_sec": start_sec,
+                    "timestamp_hms": sec_to_hms(start_sec),
+                    "speaker": str(seg.get("speaker", "UNKNOWN") or "UNKNOWN"),
+                    "text": text,
+                    "slide_context": self._nearest_slide_context(start_sec, slides),
+                }
+            )
+
+        return {
+            "meeting_meta": {
+                "title": "",
+                "date": "",
+                "time_range": "",
+                "platform": "ZOOM",
+                "company": "บริษัทแสงฟ้าก่อสร้าง จำกัด",
+                "chairperson": "",
+                "attendees": [],
+            },
+            "timeline": timeline,
+            "slides": slides,
+        }
+
+    def _agent1_call_llm(
+        self,
+        seg_chunk: list[dict[str, Any]],
+        ocr_subset: list[dict[str, Any]],
+        config_data: dict[str, Any],
+        tag: str,
+    ) -> dict[str, Any]:
+        compact_ocr = self._compact_ocr_for_agent1(ocr_subset)
+        user = fill_template(
+            AGENT1_USR,
+            TRANSCRIPT=json.dumps({"segments": seg_chunk}, ensure_ascii=False),
+            OCR=json.dumps({"captures": compact_ocr}, ensure_ascii=False),
+            CONFIG=json.dumps(config_data, ensure_ascii=False),
+        )
+        out = self.llm.call(
+            AGENT1_SYS,
+            user,
+            json_mode=True,
+            required_keys=["meeting_meta", "timeline", "slides"],
+            tag=tag,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def _agent1_call_llm_ocr_only(
+        self,
+        ocr_subset: list[dict[str, Any]],
+        config_data: dict[str, Any],
+        tag: str,
+    ) -> dict[str, Any]:
+        compact_ocr = self._build_ocr_only_payload_for_agent1(ocr_subset)
+        user = fill_template(
+            AGENT1_USR,
+            TRANSCRIPT=json.dumps({"segments": []}, ensure_ascii=False),
+            OCR=json.dumps({"captures": compact_ocr}, ensure_ascii=False),
+            CONFIG=json.dumps(config_data, ensure_ascii=False),
+        )
+        out = self.llm.call(
+            AGENT1_SYS,
+            user,
+            json_mode=True,
+            required_keys=["meeting_meta", "timeline", "slides"],
+            tag=tag,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def _agent1_call_llm_transcript_only(
+        self,
+        seg_chunk: list[dict[str, Any]],
+        config_data: dict[str, Any],
+        tag: str,
+    ) -> dict[str, Any]:
+        user = fill_template(
+            AGENT1_USR,
+            TRANSCRIPT=json.dumps({"segments": seg_chunk}, ensure_ascii=False),
+            OCR=json.dumps({"captures": []}, ensure_ascii=False),
+            CONFIG=json.dumps(config_data, ensure_ascii=False),
+        )
+        out = self.llm.call(
+            AGENT1_SYS,
+            user,
+            json_mode=True,
+            required_keys=["meeting_meta", "timeline", "slides"],
+            tag=tag,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def _agent1_subchunk_recover(
+        self,
+        seg_chunk: list[dict[str, Any]],
+        ocr_subset: list[dict[str, Any]],
+        config_data: dict[str, Any],
+        run_meta: dict[str, Any],
+        artifact_dir: str | None,
+        parent_chunk_idx: int,
+        parent_chunk_total: int,
+    ) -> dict[str, Any]:
+        sub_size = max(20, min(self.cfg.agent1_subchunk_size, len(seg_chunk)))
+        sub_chunks = chunked(seg_chunk, sub_size, overlap=0)
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            "Agent1 subchunk start",
+            parent=f"{parent_chunk_idx}/{parent_chunk_total}",
+            subchunks=len(sub_chunks),
+            sub_size=sub_size,
+        )
+
+        partials: list[dict[str, Any]] = []
+        for sidx, sub in enumerate(sub_chunks, start=1):
+            s_start = float(sub[0].get("start", 0) or 0)
+            s_end = float(sub[-1].get("end", s_start) or s_start)
+            sub_ocr = self._select_agent1_ocr_subset(ocr_subset, s_start, s_end, window_sec=120.0)
+            self._append_log(
+                run_meta,
+                artifact_dir,
+                "Agent1 subchunk",
+                parent=f"{parent_chunk_idx}/{parent_chunk_total}",
+                chunk=f"{sidx}/{len(sub_chunks)}",
+                seg=len(sub),
+                ocr=len(sub_ocr),
+                start=sec_to_hms(s_start),
+                end=sec_to_hms(s_end),
+            )
+            try:
+                out = self._agent1_call_llm(
+                    sub,
+                    sub_ocr,
+                    config_data,
+                    tag=f"agent1_subchunk_{parent_chunk_idx}_{sidx}",
+                )
+            except Exception as sub_exc:
+                self._append_log(
+                    run_meta,
+                    artifact_dir,
+                    "Agent1 subchunk fallback",
+                    parent=f"{parent_chunk_idx}/{parent_chunk_total}",
+                    chunk=f"{sidx}/{len(sub_chunks)}",
+                    error=str(sub_exc),
+                )
+                out = self._agent1_chunk_fallback(sub, sub_ocr)
+            partials.append(out)
+
+        merged = reduce_agent1_maps(partials, config_data)
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            "Agent1 subchunk done",
+            parent=f"{parent_chunk_idx}/{parent_chunk_total}",
+            timeline=len(merged.get("timeline", [])),
+            slides=len(merged.get("slides", [])),
+        )
+        return merged
+
+    def _agent1_transcript_split_recover(
+        self,
+        seg_chunk: list[dict[str, Any]],
+        config_data: dict[str, Any],
+        run_meta: dict[str, Any],
+        artifact_dir: str | None,
+        parent_chunk_idx: int,
+        parent_chunk_total: int,
+    ) -> dict[str, Any]:
+        if len(seg_chunk) <= 1:
+            return self._agent1_chunk_fallback(seg_chunk, [])
+
+        split_at = max(1, len(seg_chunk) // 2)
+        parts = [seg_chunk[:split_at], seg_chunk[split_at:]]
+        parts = [p for p in parts if p]
+
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            "Agent1 transcript split start",
+            parent=f"{parent_chunk_idx}/{parent_chunk_total}",
+            subchunks=len(parts),
+            split_at=split_at,
+        )
+
+        partials: list[dict[str, Any]] = []
+        for sidx, sub in enumerate(parts, start=1):
+            s_start = float(sub[0].get("start", 0) or 0)
+            s_end = float(sub[-1].get("end", s_start) or s_start)
+            self._append_log(
+                run_meta,
+                artifact_dir,
+                "Agent1 transcript split chunk",
+                parent=f"{parent_chunk_idx}/{parent_chunk_total}",
+                chunk=f"{sidx}/{len(parts)}",
+                seg=len(sub),
+                start=sec_to_hms(s_start),
+                end=sec_to_hms(s_end),
+            )
+            try:
+                out = self._agent1_call_llm_transcript_only(
+                    seg_chunk=sub,
+                    config_data=config_data,
+                    tag=f"agent1_transcript_subchunk_{parent_chunk_idx}_{sidx}",
+                )
+            except Exception as sub_exc:
+                self._append_log(
+                    run_meta,
+                    artifact_dir,
+                    "Agent1 transcript split fallback",
+                    parent=f"{parent_chunk_idx}/{parent_chunk_total}",
+                    chunk=f"{sidx}/{len(parts)}",
+                    error=str(sub_exc),
+                )
+                out = self._agent1_chunk_fallback(sub, [])
+            partials.append(out)
+
+        merged = reduce_agent1_maps(partials, config_data)
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            "Agent1 transcript split done",
+            parent=f"{parent_chunk_idx}/{parent_chunk_total}",
+            timeline=len(merged.get("timeline", [])),
+        )
+        return merged
+
+    def _normalize_topic(self, raw: Any, idx: int) -> dict[str, Any] | None:
+        if not isinstance(raw, dict):
+            return None
+        start_hms = str(raw.get("start_timestamp", "") or "00:00:00")
+        end_hms = str(raw.get("end_timestamp", "") or start_hms)
+        start_sec = hms_to_sec(start_hms)
+        end_sec = hms_to_sec(end_hms)
+        if end_sec < start_sec:
+            end_sec = start_sec
+            end_hms = start_hms
+
+        duration = raw.get("duration_minutes", 0)
+        try:
+            duration_minutes = int(duration)
+        except Exception:
+            duration_minutes = max((end_sec - start_sec) // 60, 0)
+        duration_minutes = max(duration_minutes, 0)
+
+        name = str(raw.get("name", "") or raw.get("title", "") or f"หัวข้อที่ {idx}")
+        topic_id = str(raw.get("id", "") or f"T{idx:03d}")
+        if not topic_id.startswith("T"):
+            topic_id = f"T{idx:03d}"
+
+        def list_of_str(val: Any) -> list[str]:
+            if not isinstance(val, list):
+                return []
+            return [str(x) for x in val if str(x).strip()]
+
+        return {
+            "id": topic_id,
+            "name": name,
+            "department": str(raw.get("department", "") or ""),
+            "start_timestamp": start_hms,
+            "end_timestamp": end_hms,
+            "duration_minutes": duration_minutes,
+            "key_speakers": list_of_str(raw.get("key_speakers")),
+            "slide_timestamps": list_of_str(raw.get("slide_timestamps")),
+            "summary_points": list_of_str(raw.get("summary_points"))[:5],
+            "issues": list_of_str(raw.get("issues")),
+            "decisions": list_of_str(raw.get("decisions")),
+            "action_items": list_of_str(raw.get("action_items")),
+        }
+
+    def _merge_agent2_entities(self, partial_kgs: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+        keys = ["people", "projects", "equipment", "financials", "issues", "decisions", "action_items"]
+        out: dict[str, list[dict[str, Any]]] = {k: [] for k in keys}
+        seen: dict[str, set[str]] = {k: set() for k in keys}
+
+        for partial in partial_kgs:
+            entities = partial.get("entities", {})
+            if not isinstance(entities, dict):
+                continue
+            for key in keys:
+                values = entities.get(key, [])
+                if not isinstance(values, list):
+                    continue
+                for item in values:
+                    if not isinstance(item, dict):
+                        continue
+                    sig = json.dumps(item, ensure_ascii=False, sort_keys=True)
+                    if sig in seen[key]:
+                        continue
+                    seen[key].add(sig)
+                    out[key].append(item)
+        return out
+
+    def _collect_topics_from_partials(self, partial_kgs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        topics: list[dict[str, Any]] = []
+        seen: set[tuple[str, str, str]] = set()
+
+        for partial in partial_kgs:
+            raw_topics = partial.get("topics", [])
+            if not isinstance(raw_topics, list):
+                continue
+            for raw in raw_topics:
+                normalized = self._normalize_topic(raw, len(topics) + 1)
+                if not normalized:
+                    continue
+                sig = (
+                    normalized["name"],
+                    normalized["start_timestamp"],
+                    normalized["end_timestamp"],
+                )
+                if sig in seen:
+                    continue
+                seen.add(sig)
+                topics.append(normalized)
+
+        for i, topic in enumerate(topics, start=1):
+            topic["id"] = f"T{i:03d}"
+        return topics
+
+    def _synthesize_topics_from_timeline(self, cleaned: dict[str, Any]) -> list[dict[str, Any]]:
+        timeline = cleaned.get("timeline", [])
+        if not isinstance(timeline, list) or not timeline:
+            return []
+        slides = cleaned.get("slides", []) if isinstance(cleaned.get("slides"), list) else []
+
+        min_sec = int(float(timeline[0].get("timestamp_sec", 0) or 0))
+        max_sec = int(float(timeline[-1].get("timestamp_sec", min_sec) or min_sec))
+        if max_sec < min_sec:
+            max_sec = min_sec
+
+        window_sec = 12 * 60
+        out: list[dict[str, Any]] = []
+        cursor = min_sec
+
+        while cursor <= max_sec and len(out) < 20:
+            end_sec = min(cursor + window_sec - 1, max_sec)
+            rows = [
+                r for r in timeline if cursor <= int(float(r.get("timestamp_sec", 0) or 0)) <= end_sec
+            ]
+            if not rows:
+                cursor = end_sec + 1
+                continue
+
+            speakers = Counter(str(r.get("speaker", "UNKNOWN") or "UNKNOWN") for r in rows)
+            key_speakers = [name for name, _ in speakers.most_common(3)]
+
+            summary_points: list[str] = []
+            for row in rows:
+                text = str(row.get("text", "") or "").strip()
+                if not text:
+                    continue
+                if text in summary_points:
+                    continue
+                summary_points.append(text[:180])
+                if len(summary_points) >= 4:
+                    break
+
+            slide_ts: list[str] = []
+            for s in slides:
+                ts = str(s.get("timestamp_hms", "00:00:00"))
+                sec = hms_to_sec(ts)
+                if cursor <= sec <= end_sec:
+                    slide_ts.append(ts)
+
+            idx = len(out) + 1
+            out.append(
+                {
+                    "id": f"T{idx:03d}",
+                    "name": f"สรุปการประชุมช่วง {sec_to_hms(cursor)} - {sec_to_hms(end_sec)}",
+                    "department": "",
+                    "start_timestamp": sec_to_hms(cursor),
+                    "end_timestamp": sec_to_hms(end_sec),
+                    "duration_minutes": max((end_sec - cursor + 1) // 60, 1),
+                    "key_speakers": key_speakers,
+                    "slide_timestamps": slide_ts[:8],
+                    "summary_points": summary_points,
+                    "issues": [],
+                    "decisions": [],
+                    "action_items": [],
+                }
+            )
+            cursor = end_sec + 1
+
+        return out
+
+    def _agent2_deterministic_fallback(
+        self,
+        partial_kgs: list[dict[str, Any]],
+        cleaned: dict[str, Any],
+    ) -> dict[str, Any]:
+        entities = self._merge_agent2_entities(partial_kgs)
+        topics = self._collect_topics_from_partials(partial_kgs)
+        if not topics:
+            topics = self._synthesize_topics_from_timeline(cleaned)
+        return {"entities": entities, "topics": topics}
+
+    def node_load_inputs(self, _: WorkflowState) -> WorkflowState:
+        out_path = Path(self.cfg.output_html_path)
+        ensure_dir(out_path.parent)
+
+        run_id = datetime.now().strftime("run_%Y%m%d_%H%M%S")
+        artifact_dir = out_path.parent / "artifacts" / run_id
+        if self.cfg.save_intermediate:
+            ensure_dir(artifact_dir)
+
+        transcript = load_json(self.cfg.transcript_path)
+        config_data = load_json(self.cfg.config_path) if self.cfg.config_path else {}
+        ocr_data = load_json(self.cfg.ocr_path) if (self.cfg.include_ocr and self.cfg.ocr_path) else {"captures": []}
+
+        segments = transcript.get("segments", [])
+        if not isinstance(segments, list) or not segments:
+            raise PipelineError("TRANSCRIPT_PATH has no segments")
+
+        captures = ocr_data.get("captures", []) if isinstance(ocr_data.get("captures"), list) else []
+        resume_cleaned: dict[str, Any] = {}
+        if self.cfg.resume_artifact_dir:
+            resume_dir = Path(self.cfg.resume_artifact_dir).expanduser()
+            resume_cleaned_path = resume_dir / "agent1_cleaned.json"
+            if not resume_cleaned_path.exists():
+                raise PipelineError(
+                    f"--resume-artifact-dir set but missing file: {resume_cleaned_path}"
+                )
+            resume_cleaned = load_json(resume_cleaned_path)
+
+        run_meta: dict[str, Any] = {
+            "run_id": run_id,
+            "started_at": datetime.now().isoformat(),
+            "config": {
+                "mode": self.cfg.summarize_mode,
+                "include_ocr": self.cfg.include_ocr,
+                "image_insert_enabled": self.cfg.image_insert_enabled,
+                "image_embed_mode": self.cfg.image_embed_mode,
+                "allow_ollama_chat_fallback": self.cfg.allow_ollama_chat_fallback,
+                "agent1_chunk_size": self.cfg.agent1_chunk_size,
+                "agent1_chunk_overlap": self.cfg.agent1_chunk_overlap,
+                "agent1_subchunk_on_failure": self.cfg.agent1_subchunk_on_failure,
+                "agent1_subchunk_size": self.cfg.agent1_subchunk_size,
+                "agent1_ocr_max_captures": self.cfg.agent1_ocr_max_captures,
+                "agent1_ocr_snippet_chars": self.cfg.agent1_ocr_snippet_chars,
+                "agent2_chunk_size": self.cfg.agent2_chunk_size,
+                "agent25_chunk_size": self.cfg.agent25_chunk_size,
+                "pipeline_max_concurrency": self.cfg.pipeline_max_concurrency,
+                "resume_artifact_dir": self.cfg.resume_artifact_dir,
+                "save_intermediate": self.cfg.save_intermediate,
+            },
+            "chunk_stats": {},
+            "provider_calls": [],
+            "runtime_logs": [],
+        }
+
+        self._append_log(
+            run_meta,
+            str(artifact_dir),
+            "Loaded inputs",
+            segments=len(segments),
+            captures=len(captures),
+            mode=self.cfg.summarize_mode,
+            concurrency=self.cfg.pipeline_max_concurrency,
+        )
+        if resume_cleaned:
+            self._append_log(
+                run_meta,
+                str(artifact_dir),
+                "Resume input detected",
+                source=self.cfg.resume_artifact_dir,
+                timeline=len(resume_cleaned.get("timeline", [])),
+                slides=len(resume_cleaned.get("slides", [])),
+            )
+
+        return {
+            "run_id": run_id,
+            "artifact_dir": str(artifact_dir),
+            "run_meta": run_meta,
+            "transcript": transcript,
+            "config_data": config_data,
+            "ocr_data": ocr_data,
+            "segments": segments,
+            "captures": captures,
+            "resume_cleaned": resume_cleaned,
+        }
+
+    def node_agent1(self, state: WorkflowState) -> WorkflowState:
+        resume_cleaned = state.get("resume_cleaned", {})
+        if isinstance(resume_cleaned, dict) and isinstance(resume_cleaned.get("timeline"), list):
+            run_meta = dict(state["run_meta"])
+            artifact_dir = state.get("artifact_dir")
+            self._append_log(
+                run_meta,
+                artifact_dir,
+                "Agent1 skipped",
+                reason="resume_artifact",
+                source=self.cfg.resume_artifact_dir,
+            )
+            self._save_json_if_enabled(state, "agent1_cleaned.json", resume_cleaned)
+            return {"cleaned": resume_cleaned, "run_meta": run_meta}
+
+        segments = state["segments"]
+        captures = state.get("captures", [])
+        config_data = state.get("config_data", {})
+        artifact_dir = state.get("artifact_dir")
+
+        seg_chunks = chunked(
+            segments,
+            max(1, self.cfg.agent1_chunk_size),
+            overlap=max(0, self.cfg.agent1_chunk_overlap),
+        )
+        run_meta = dict(state["run_meta"])
+        run_meta.setdefault("chunk_stats", {})["agent1_segment_chunks"] = len(seg_chunks)
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            "Agent1 map start",
+            chunks=len(seg_chunks),
+            segments=len(segments),
+            chunk_size=self.cfg.agent1_chunk_size,
+            overlap=self.cfg.agent1_chunk_overlap,
+            mode="split_transcript_llm_ocr_llm",
+            ocr_payload="compact_snippet",
+            ocr_max_captures=self.cfg.agent1_ocr_max_captures,
+            ocr_snippet_chars=self.cfg.agent1_ocr_snippet_chars,
+        )
+
+        outputs: list[dict[str, Any]] = []
+        for idx, seg_chunk in enumerate(seg_chunks, start=1):
+            start_sec = float(seg_chunk[0].get("start", 0) or 0)
+            end_sec = float(seg_chunk[-1].get("end", start_sec) or start_sec)
+            ocr_subset = self._select_agent1_ocr_subset(captures, start_sec, end_sec, window_sec=120.0)
+            self._append_log(
+                run_meta,
+                artifact_dir,
+                "Agent1 chunk",
+                chunk=f"{idx}/{len(seg_chunks)}",
+                seg=len(seg_chunk),
+                ocr=len(ocr_subset),
+                start=sec_to_hms(start_sec),
+                end=sec_to_hms(end_sec),
+            )
+
+            # Transcript path: LLM first (OCR removed), deterministic fallback on failure.
+            self._append_log(
+                run_meta,
+                artifact_dir,
+                "Agent1 transcript-only call",
+                chunk=f"{idx}/{len(seg_chunks)}",
+                ocr_payload=0,
+            )
+            try:
+                out = self._agent1_call_llm_transcript_only(
+                    seg_chunk=seg_chunk,
+                    config_data=config_data,
+                    tag=f"agent1_transcript_chunk_{idx}",
+                )
+                self._append_log(
+                    run_meta,
+                    artifact_dir,
+                    "Agent1 transcript-only done",
+                    chunk=f"{idx}/{len(seg_chunks)}",
+                    timeline=len(out.get("timeline", [])) if isinstance(out, dict) else 0,
+                )
+            except Exception as exc:
+                self._append_log(
+                    run_meta,
+                    artifact_dir,
+                    "Agent1 transcript-only fallback",
+                    chunk=f"{idx}/{len(seg_chunks)}",
+                    error=str(exc),
+                )
+                out = self._agent1_transcript_split_recover(
+                    seg_chunk=seg_chunk,
+                    config_data=config_data,
+                    run_meta=run_meta,
+                    artifact_dir=artifact_dir,
+                    parent_chunk_idx=idx,
+                    parent_chunk_total=len(seg_chunks),
+                )
+
+            # OCR path: optional LLM enrichment on OCR-only payload.
+            if ocr_subset:
+                self._append_log(
+                    run_meta,
+                    artifact_dir,
+                    "Agent1 ocr-only call",
+                    chunk=f"{idx}/{len(seg_chunks)}",
+                    ocr=len(ocr_subset),
+                )
+                try:
+                    ocr_out = self._agent1_call_llm_ocr_only(
+                        ocr_subset=ocr_subset,
+                        config_data=config_data,
+                        tag=f"agent1_ocr_chunk_{idx}",
+                    )
+                    slides = ocr_out.get("slides", [])
+                    meeting_meta = ocr_out.get("meeting_meta", {})
+                    if isinstance(slides, list) and slides:
+                        out["slides"] = slides
+                    self._append_log(
+                        run_meta,
+                        artifact_dir,
+                        "Agent1 ocr-only done",
+                        chunk=f"{idx}/{len(seg_chunks)}",
+                        slides=len(slides) if isinstance(slides, list) else 0,
+                    )
+                    if isinstance(meeting_meta, dict) and meeting_meta:
+                        base_meta = out.get("meeting_meta", {})
+                        if not isinstance(base_meta, dict):
+                            base_meta = {}
+                        merged_meta = dict(meeting_meta)
+                        merged_meta.update({k: v for k, v in base_meta.items() if v not in ("", [], None)})
+                        out["meeting_meta"] = merged_meta
+                except Exception as exc:
+                    self._append_log(
+                        run_meta,
+                        artifact_dir,
+                        "Agent1 OCR-only fallback",
+                        chunk=f"{idx}/{len(seg_chunks)}",
+                        error=str(exc),
+                    )
+
+            assert isinstance(out, dict)
+            outputs.append(out)
+            self._append_log(
+                run_meta,
+                artifact_dir,
+                "Agent1 chunk done",
+                chunk=f"{idx}/{len(seg_chunks)}",
+                timeline=len(out.get("timeline", [])),
+                slides=len(out.get("slides", [])),
+            )
+
+        self._append_log(run_meta, artifact_dir, "Agent1 reduce start", partials=len(outputs))
+        cleaned = reduce_agent1_maps(outputs, config_data)
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            "Agent1 reduce done",
+            timeline=len(cleaned.get("timeline", [])),
+            slides=len(cleaned.get("slides", [])),
+        )
+        self._save_json_if_enabled(state, "agent1_cleaned.json", cleaned)
+
+        return {"cleaned": cleaned, "run_meta": run_meta}
+
+    def node_agent2(self, state: WorkflowState) -> WorkflowState:
+        cleaned = state["cleaned"]
+        timeline = cleaned.get("timeline", [])
+        if not isinstance(timeline, list) or not timeline:
+            raise PipelineError("Agent1 output has empty timeline")
+        artifact_dir = state.get("artifact_dir")
+
+        timeline_chunks = chunked(timeline, max(1, self.cfg.agent2_chunk_size), overlap=0)
+        run_meta = dict(state["run_meta"])
+        run_meta.setdefault("chunk_stats", {})["agent2_timeline_chunks"] = len(timeline_chunks)
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            "Agent2 map start",
+            chunks=len(timeline_chunks),
+            timeline=len(timeline),
+            chunk_size=self.cfg.agent2_chunk_size,
+            workers=self._effective_workers(len(timeline_chunks)),
+        )
+
+        slides = cleaned.get("slides", []) if isinstance(cleaned.get("slides"), list) else []
+        partial_kgs: list[dict[str, Any]] = []
+        chunk_inputs: list[tuple[int, list[dict[str, Any]], list[dict[str, Any]]]] = []
+        total_chunks = len(timeline_chunks)
+        for idx, tl_chunk in enumerate(timeline_chunks, start=1):
+            c_start = float(tl_chunk[0].get("timestamp_sec", 0) or 0)
+            c_end = float(tl_chunk[-1].get("timestamp_sec", c_start) or c_start)
+            slides_subset = [
+                s
+                for s in slides
+                if (c_start - 120.0)
+                <= hms_to_sec(str(s.get("timestamp_hms", "00:00:00")))
+                <= (c_end + 120.0)
+            ]
+            self._append_log(
+                run_meta,
+                artifact_dir,
+                "Agent2 chunk",
+                chunk=f"{idx}/{len(timeline_chunks)}",
+                rows=len(tl_chunk),
+                slides=len(slides_subset),
+                start=sec_to_hms(c_start),
+                end=sec_to_hms(c_end),
+            )
+            chunk_inputs.append((idx, tl_chunk, slides_subset))
+
+        def run_one_chunk(item: tuple[int, list[dict[str, Any]], list[dict[str, Any]]]) -> tuple[int, dict[str, Any]]:
+            idx, tl_chunk, slides_subset = item
+            data = {
+                "meeting_meta": cleaned.get("meeting_meta", {}),
+                "timeline": tl_chunk,
+                "slides": slides_subset,
+            }
+            user = fill_template(AGENT2_USR, DATA=json.dumps(data, ensure_ascii=False))
+            out = self.llm.call(
+                AGENT2_SYS,
+                user,
+                json_mode=True,
+                required_keys=["entities", "topics"],
+                tag=f"agent2_map_chunk_{idx}",
+            )
+            assert isinstance(out, dict)
+            return idx, out
+
+        workers = self._effective_workers(len(chunk_inputs))
+        if workers == 1:
+            for idx, tl_chunk, slides_subset in chunk_inputs:
+                _, out = run_one_chunk((idx, tl_chunk, slides_subset))
+                partial_kgs.append(out)
+                self._append_log(
+                    run_meta,
+                    artifact_dir,
+                    "Agent2 chunk done",
+                    chunk=f"{idx}/{total_chunks}",
+                    topics=len(out.get("topics", [])),
+                )
+        else:
+            results: dict[int, dict[str, Any]] = {}
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {executor.submit(run_one_chunk, item): item[0] for item in chunk_inputs}
+                for future in as_completed(futures):
+                    idx = futures[future]
+                    try:
+                        _, out = future.result()
+                    except Exception as exc:
+                        self._append_log(
+                            run_meta,
+                            artifact_dir,
+                            "Agent2 chunk failed",
+                            chunk=f"{idx}/{total_chunks}",
+                            error=str(exc),
+                        )
+                        raise
+                    results[idx] = out
+                    self._append_log(
+                        run_meta,
+                        artifact_dir,
+                        "Agent2 chunk done",
+                        chunk=f"{idx}/{total_chunks}",
+                        topics=len(out.get("topics", [])),
+                    )
+            for idx in sorted(results):
+                partial_kgs.append(results[idx])
+
+        self._append_log(run_meta, artifact_dir, "Agent2 reduce start", partials=len(partial_kgs))
+        if len(partial_kgs) == 1:
+            kg = partial_kgs[0]
+        else:
+            reduce_user = fill_template(
+                AGENT2_REDUCE_USR,
+                PARTIAL_KGS=json.dumps(partial_kgs, ensure_ascii=False),
+            )
+            reduced = self.llm.call(
+                AGENT2_REDUCE_SYS,
+                reduce_user,
+                json_mode=True,
+                required_keys=["entities", "topics"],
+                tag="agent2_reduce",
+            )
+            assert isinstance(reduced, dict)
+            kg = reduced
+
+        topics = kg.get("topics", []) if isinstance(kg.get("topics"), list) else []
+        if not topics:
+            self._append_log(
+                run_meta,
+                artifact_dir,
+                "Agent2 reduce empty topics",
+                action="deterministic_fallback",
+            )
+            kg = self._agent2_deterministic_fallback(partial_kgs, cleaned)
+            topics = kg.get("topics", []) if isinstance(kg.get("topics"), list) else []
+
+        if not topics:
+            raise PipelineError("Agent2 produced no topics (including fallback)")
+
+        topic_texts = [build_topic_text(t) for t in topics]
+        topic_vecs = self.llm.embed(topic_texts) if topic_texts else []
+        for i, topic in enumerate(topics):
+            topic["_vec"] = topic_vecs[i] if i < len(topic_vecs) else []
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            "Agent2 reduce done",
+            topics=len(topics),
+            decisions=len(kg.get("entities", {}).get("decisions", [])),
+            actions=len(kg.get("entities", {}).get("action_items", [])),
+        )
+
+        self._save_json_if_enabled(state, "agent2_kg.json", sanitize_kg_for_output(kg))
+        return {"kg": kg, "topics": topics, "run_meta": run_meta}
+
+    def route_after_agent2(self, state: WorkflowState) -> str:
+        config_data = state.get("config_data", {})
+        agenda_text = str(config_data.get("AGENDA_TEXT", "") or "")
+        run_meta = state.get("run_meta", {})
+        artifact_dir = state.get("artifact_dir")
+        if self.cfg.summarize_mode == "agenda" and agenda_text.strip():
+            self._append_log(run_meta, artifact_dir, "Routing", next="agent3a", mode="agenda")
+            return "agent3a"
+        self._append_log(run_meta, artifact_dir, "Routing", next="agent3b", mode="auto")
+        return "agent3b"
+
+    def node_agent3a(self, state: WorkflowState) -> WorkflowState:
+        run_meta = dict(state["run_meta"])
+        artifact_dir = state.get("artifact_dir")
+        config_data = state.get("config_data", {})
+        agenda_text = str(config_data.get("AGENDA_TEXT", "") or "")
+        topics = state["topics"]
+
+        agenda_lines = [x.strip() for x in agenda_text.splitlines() if x.strip()]
+        agenda_vecs = self.llm.embed(agenda_lines)
+        semantic_hints = []
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            "Agent3A start",
+            agenda_lines=len(agenda_lines),
+            topics=len(topics),
+        )
+
+        for line, avec in zip(agenda_lines, agenda_vecs):
+            scores = []
+            for t in topics:
+                vec = t.get("_vec", [])
+                score = cosine(avec, vec) if isinstance(vec, list) else 0.0
+                scores.append((score, str(t.get("id", "")), str(t.get("name", ""))))
+            best = max(scores, key=lambda x: x[0]) if scores else (0.0, "", "")
+            semantic_hints.append(
+                {
+                    "agenda_line": line,
+                    "best_topic": best[1],
+                    "topic_name": best[2],
+                    "score": round(best[0], 3),
+                }
+            )
+
+        user = fill_template(
+            AGENT3A_USR,
+            AGENDA=agenda_text,
+            KG_TOPICS=json.dumps(sanitize_kg_for_output({"topics": topics})["topics"], ensure_ascii=False),
+            SEMANTIC_HINTS=json.dumps(semantic_hints, ensure_ascii=False),
+        )
+        topic_map = self.llm.call(
+            AGENT3A_SYS,
+            user,
+            json_mode=True,
+            required_keys=["agenda_mapping", "coverage_stats"],
+            tag="agent3a",
+        )
+        assert isinstance(topic_map, dict)
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            "Agent3A done",
+            mapped=len(topic_map.get("agenda_mapping", [])),
+            discussed=topic_map.get("coverage_stats", {}).get("discussed", 0),
+        )
+
+        self._save_json_if_enabled(state, "agent3_topic_map.json", topic_map)
+        return {"topic_map": topic_map, "run_meta": run_meta}
+
+    def node_agent3b(self, state: WorkflowState) -> WorkflowState:
+        run_meta = dict(state["run_meta"])
+        artifact_dir = state.get("artifact_dir")
+        kg = state["kg"]
+        timeline = state["cleaned"].get("timeline", [])
+        self._append_log(run_meta, artifact_dir, "Agent3B start", timeline_sample=min(len(timeline), 300))
+
+        user = fill_template(
+            AGENT3B_USR,
+            KG=json.dumps(sanitize_kg_for_output(kg), ensure_ascii=False),
+            TIMELINE=json.dumps(timeline[:300], ensure_ascii=False),
+        )
+        topic_map = self.llm.call(
+            AGENT3B_SYS,
+            user,
+            json_mode=True,
+            required_keys=["extracted_topics", "topic_flow"],
+            tag="agent3b",
+        )
+        assert isinstance(topic_map, dict)
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            "Agent3B done",
+            extracted=len(topic_map.get("extracted_topics", [])),
+        )
+
+        self._save_json_if_enabled(state, "agent3_topic_map.json", topic_map)
+        return {"topic_map": topic_map, "run_meta": run_meta}
+
+    def node_agent25(self, state: WorkflowState) -> WorkflowState:
+        captures = state.get("captures", [])
+        topics = state["topics"]
+        run_meta = dict(state["run_meta"])
+        artifact_dir = state.get("artifact_dir")
+
+        image_by_topic: dict[str, list[dict[str, Any]]] = {}
+        image_manifest_output: dict[str, Any] = {"image_manifest": [], "statistics": {}}
+
+        if not (self.cfg.image_insert_enabled and self.cfg.include_ocr and captures):
+            self._append_log(run_meta, artifact_dir, "Agent2.5 skipped", reason="image_insert_disabled_or_no_ocr")
+            return {
+                "image_by_topic": image_by_topic,
+                "image_manifest_output": image_manifest_output,
+                "run_meta": run_meta,
+            }
+
+        capture_chunks = chunked(captures, max(1, self.cfg.agent25_chunk_size), overlap=0)
+        run_meta.setdefault("chunk_stats", {})["agent25_capture_chunks"] = len(capture_chunks)
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            "Agent2.5 map start",
+            chunks=len(capture_chunks),
+            captures=len(captures),
+            chunk_size=self.cfg.agent25_chunk_size,
+            workers=self._effective_workers(len(capture_chunks)),
+        )
+
+        partial_images: list[dict[str, Any]] = []
+        topic_no_vec = sanitize_kg_for_output({"topics": topics}).get("topics", [])
+        chunk_inputs: list[tuple[int, list[dict[str, Any]]]] = []
+        total_chunks = len(capture_chunks)
+        for idx, cap_chunk in enumerate(capture_chunks, start=1):
+            c_start = float(cap_chunk[0].get("timestamp_sec", 0) or 0)
+            c_end = float(cap_chunk[-1].get("timestamp_sec", c_start) or c_start)
+            self._append_log(
+                run_meta,
+                artifact_dir,
+                "Agent2.5 chunk",
+                chunk=f"{idx}/{len(capture_chunks)}",
+                captures=len(cap_chunk),
+                start=sec_to_hms(c_start),
+                end=sec_to_hms(c_end),
+            )
+            chunk_inputs.append((idx, cap_chunk))
+
+        def run_one_chunk(item: tuple[int, list[dict[str, Any]]]) -> tuple[int, dict[str, Any]]:
+            idx, cap_chunk = item
+            user = fill_template(
+                AGENT25_USR,
+                CAPTURES=json.dumps(cap_chunk, ensure_ascii=False),
+                KG_TOPICS=json.dumps(topic_no_vec, ensure_ascii=False),
+            )
+            out = self.llm.call(
+                AGENT25_SYS,
+                user,
+                json_mode=True,
+                required_keys=["image_manifest", "statistics"],
+                tag=f"agent25_map_chunk_{idx}",
+            )
+            assert isinstance(out, dict)
+            return idx, out
+
+        workers = self._effective_workers(len(chunk_inputs))
+        if workers == 1:
+            for idx, cap_chunk in chunk_inputs:
+                _, out = run_one_chunk((idx, cap_chunk))
+                partial_images.append(out)
+                self._append_log(
+                    run_meta,
+                    artifact_dir,
+                    "Agent2.5 chunk done",
+                    chunk=f"{idx}/{total_chunks}",
+                    manifest=len(out.get("image_manifest", [])),
+                )
+        else:
+            results: dict[int, dict[str, Any]] = {}
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {executor.submit(run_one_chunk, item): item[0] for item in chunk_inputs}
+                for future in as_completed(futures):
+                    idx = futures[future]
+                    try:
+                        _, out = future.result()
+                    except Exception as exc:
+                        self._append_log(
+                            run_meta,
+                            artifact_dir,
+                            "Agent2.5 chunk failed",
+                            chunk=f"{idx}/{total_chunks}",
+                            error=str(exc),
+                        )
+                        raise
+                    results[idx] = out
+                    self._append_log(
+                        run_meta,
+                        artifact_dir,
+                        "Agent2.5 chunk done",
+                        chunk=f"{idx}/{total_chunks}",
+                        manifest=len(out.get("image_manifest", [])),
+                    )
+            for idx in sorted(results):
+                partial_images.append(results[idx])
+
+        self._append_log(run_meta, artifact_dir, "Agent2.5 reduce start", partials=len(partial_images))
+        if len(partial_images) == 1:
+            merged_images = partial_images[0]
+        else:
+            reduce_user = fill_template(
+                AGENT25_REDUCE_USR,
+                PARTIAL_OUTPUTS=json.dumps(partial_images, ensure_ascii=False),
+            )
+            try:
+                reduced = self.llm.call(
+                    AGENT25_REDUCE_SYS,
+                    reduce_user,
+                    json_mode=True,
+                    required_keys=["image_manifest", "statistics"],
+                    tag="agent25_reduce",
+                )
+                assert isinstance(reduced, dict)
+                merged_images = reduced
+            except Exception:
+                merged_images = merge_partial_image_outputs(partial_images)
+
+        merged_images = merge_partial_image_outputs([merged_images])
+        manifest = merged_images.get("image_manifest", [])
+        if not isinstance(manifest, list):
+            manifest = []
+
+        topic_vec_map = {
+            str(t.get("id", "")): t.get("_vec", [])
+            for t in topics
+            if isinstance(t, dict) and str(t.get("id", ""))
+        }
+        topic_name_map = {
+            str(t.get("id", "")): str(t.get("name", "") or "")
+            for t in topics
+            if isinstance(t, dict) and str(t.get("id", ""))
+        }
+
+        cap_texts = [str(c.get("ocr_text", "") or "")[:800] for c in captures]
+        cap_vecs = self.llm.embed(cap_texts)
+        capture_by_index = {
+            int(c.get("capture_index", 0) or 0): c for c in captures if int(c.get("capture_index", 0) or 0) > 0
+        }
+
+        for item in manifest:
+            capture_index = int(item.get("capture_index", 0) or 0)
+            if 1 <= capture_index <= len(cap_vecs):
+                cap_vec = cap_vecs[capture_index - 1]
+                best_score = -1.0
+                best_id = ""
+                for tid, tvec in topic_vec_map.items():
+                    if isinstance(tvec, list) and tvec:
+                        score = cosine(cap_vec, tvec)
+                        if score > best_score:
+                            best_score = score
+                            best_id = tid
+                if best_id and best_score > 0.65:
+                    item["topic_id"] = best_id
+                    item["topic_name"] = topic_name_map.get(best_id, item.get("topic_name", ""))
+
+            raw_path = str(item.get("image_path", "") or "")
+            resolved = resolve_image_path(raw_path, self.cfg.image_base_dir, self.cfg.ocr_path)
+            if resolved:
+                item["resolved_image_path"] = str(resolved)
+
+            render_as = str(item.get("render_as", "") or "")
+            special = str(item.get("special_pattern", "") or "")
+            if self.cfg.image_embed_mode == "base64" and resolved and render_as in {"photo_lightbox", "before_after"}:
+                item["image_base64"] = image_to_base64_data_uri(resolved)
+
+            if special == "BEFORE_AFTER" or render_as == "before_after":
+                pair_index = int(item.get("pair_index", 0) or 0)
+                if pair_index > 0 and pair_index in capture_by_index:
+                    pair_cap = capture_by_index[pair_index]
+                    pair_resolved = resolve_image_path(
+                        str(pair_cap.get("image_path", "") or ""),
+                        self.cfg.image_base_dir,
+                        self.cfg.ocr_path,
+                    )
+                    if resolved and self.cfg.image_embed_mode == "base64":
+                        item["before_base64"] = image_to_base64_data_uri(resolved)
+                    if pair_resolved and self.cfg.image_embed_mode == "base64":
+                        item["after_base64"] = image_to_base64_data_uri(pair_resolved)
+
+        image_by_topic = group_manifest_by_topic(
+            manifest,
+            max_per_topic=self.cfg.image_max_per_topic,
+            min_file_size_kb=self.cfg.image_min_file_size_kb,
+        )
+        image_manifest_output = {
+            "image_manifest": manifest,
+            "statistics": merged_images.get("statistics", {}),
+            "image_by_topic": image_by_topic,
+        }
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            "Agent2.5 done",
+            manifest=len(manifest),
+            topics=len(image_by_topic),
+        )
+
+        self._save_json_if_enabled(state, "agent25_image_manifest.json", image_manifest_output)
+        return {
+            "image_by_topic": image_by_topic,
+            "image_manifest_output": image_manifest_output,
+            "run_meta": run_meta,
+        }
+
+    def node_agent4(self, state: WorkflowState) -> WorkflowState:
+        run_meta = dict(state["run_meta"])
+        artifact_dir = state.get("artifact_dir")
+        topic_map = state["topic_map"]
+        kg = state["kg"]
+        cleaned = state["cleaned"]
+        timeline = cleaned.get("timeline", [])
+        slides = cleaned.get("slides", []) if isinstance(cleaned.get("slides"), list) else []
+
+        topic_items: list[dict[str, Any]] = []
+        if "agenda_mapping" in topic_map:
+            for item in topic_map.get("agenda_mapping", []):
+                if not isinstance(item, dict):
+                    continue
+                mapped = item.get("mapped_topics", []) if isinstance(item.get("mapped_topics"), list) else []
+                topic_items.append(
+                    {
+                        "topic_id": str(mapped[0]) if mapped else "",
+                        "agenda_number": str(item.get("agenda_number", "") or ""),
+                        "title": str(item.get("agenda_title", "") or ""),
+                        "department": str(item.get("agenda_department", "") or ""),
+                        "status": str(item.get("status", "") or ""),
+                        "time_range": item.get("time_range", {}),
+                        "key_speaker": str(item.get("key_speaker", "") or ""),
+                    }
+                )
+        else:
+            for item in topic_map.get("extracted_topics", []):
+                if not isinstance(item, dict):
+                    continue
+                topic_items.append(
+                    {
+                        "topic_id": str(item.get("id", "") or ""),
+                        "agenda_number": str(item.get("number", "") or ""),
+                        "title": str(item.get("title", "") or ""),
+                        "department": str(item.get("department", "") or ""),
+                        "status": "discussed",
+                        "time_range": {
+                            "start": str(item.get("start_timestamp", "00:00:00")),
+                            "end": str(item.get("end_timestamp", "00:00:00")),
+                        },
+                        "key_speaker": ", ".join(item.get("key_speakers", [])) if isinstance(item.get("key_speakers"), list) else "",
+                    }
+                )
+        workers = self._effective_workers(len(topic_items))
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            "Agent4 topic summary start",
+            topics=len(topic_items),
+            workers=workers,
+        )
+
+        topic_jobs: list[dict[str, Any]] = []
+        for idx, topic_item in enumerate(topic_items, start=1):
+            tr = topic_item.get("time_range", {})
+            start_hms = str(tr.get("start", "00:00:00") if isinstance(tr, dict) else "00:00:00")
+            end_hms = str(tr.get("end", "00:00:00") if isinstance(tr, dict) else "00:00:00")
+            start_sec = hms_to_sec(start_hms)
+            end_sec = hms_to_sec(end_hms)
+            if end_sec < start_sec:
+                end_sec = start_sec
+
+            tl_snip = timeline_snippet_by_range(timeline, start_sec, end_sec)
+            slides_snip = [
+                s
+                for s in slides
+                if start_sec - 120 <= hms_to_sec(str(s.get("timestamp_hms", "00:00:00"))) <= end_sec + 120
+            ]
+            self._append_log(
+                run_meta,
+                artifact_dir,
+                "Agent4 topic chunk",
+                chunk=f"{idx}/{len(topic_items)}",
+                topic_id=topic_item.get("topic_id", ""),
+                timeline=len(tl_snip),
+                slides=len(slides_snip),
+            )
+            topic_jobs.append(
+                {
+                    "idx": idx,
+                    "topic_item": topic_item,
+                    "start_hms": start_hms,
+                    "end_hms": end_hms,
+                    "slides_snip": slides_snip,
+                    "tl_snip": tl_snip,
+                }
+            )
+
+        def run_one_topic(job: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+            idx = int(job["idx"])
+            topic_item = job["topic_item"]
+            user = fill_template(
+                AGENT4_TOPIC_USR,
+                KG=json.dumps(sanitize_kg_for_output(kg), ensure_ascii=False),
+                TOPIC_ITEM=json.dumps(topic_item, ensure_ascii=False),
+                TIMELINE_SNIPPET=json.dumps(job["tl_snip"], ensure_ascii=False),
+                SLIDES=json.dumps(job["slides_snip"], ensure_ascii=False),
+            )
+            out = self.llm.call(
+                AGENT4_TOPIC_SYS,
+                user,
+                json_mode=True,
+                required_keys=["topic_summary"],
+                tag=f"agent4_topic_{idx}",
+            )
+            assert isinstance(out, dict)
+            ts = out.get("topic_summary", {})
+            if not isinstance(ts, dict):
+                ts = {}
+            ts.setdefault("topic_id", topic_item.get("topic_id", f"T{idx:03d}"))
+            ts.setdefault("agenda_number", topic_item.get("agenda_number", str(idx)))
+            ts.setdefault("title", topic_item.get("title", ""))
+            ts.setdefault("department", topic_item.get("department", ""))
+            ts.setdefault("presenter", topic_item.get("key_speaker", ""))
+            ts.setdefault("time_range", f"{job['start_hms']} – {job['end_hms']}")
+            ts.setdefault("status", topic_item.get("status", "discussed"))
+            ts.setdefault("summary_th", "")
+            ts.setdefault("key_data_points", [])
+            ts.setdefault("decisions", [])
+            ts.setdefault("action_items", [])
+            ts.setdefault("slide_count", len(job["slides_snip"]))
+            return idx, ts
+
+        topic_summaries: list[dict[str, Any]] = []
+        if workers == 1:
+            for job in topic_jobs:
+                idx, ts = run_one_topic(job)
+                topic_summaries.append(ts)
+                self._append_log(
+                    run_meta,
+                    artifact_dir,
+                    "Agent4 topic done",
+                    chunk=f"{idx}/{len(topic_items)}",
+                    decisions=len(ts.get("decisions", [])),
+                    actions=len(ts.get("action_items", [])),
+                )
+        else:
+            results: dict[int, dict[str, Any]] = {}
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {executor.submit(run_one_topic, job): int(job["idx"]) for job in topic_jobs}
+                for future in as_completed(futures):
+                    idx = futures[future]
+                    try:
+                        _, ts = future.result()
+                    except Exception as exc:
+                        self._append_log(
+                            run_meta,
+                            artifact_dir,
+                            "Agent4 topic failed",
+                            chunk=f"{idx}/{len(topic_items)}",
+                            error=str(exc),
+                        )
+                        raise
+                    results[idx] = ts
+                    self._append_log(
+                        run_meta,
+                        artifact_dir,
+                        "Agent4 topic done",
+                        chunk=f"{idx}/{len(topic_items)}",
+                        decisions=len(ts.get("decisions", [])),
+                        actions=len(ts.get("action_items", [])),
+                    )
+            for idx in sorted(results):
+                topic_summaries.append(results[idx])
+
+        self._append_log(run_meta, artifact_dir, "Agent4 executive summary start")
+        exec_user = fill_template(
+            AGENT4_EXEC_USR,
+            TOPIC_SUMMARIES=json.dumps(topic_summaries, ensure_ascii=False),
+            KG=json.dumps(sanitize_kg_for_output(kg), ensure_ascii=False),
+        )
+        exec_out = self.llm.call(
+            AGENT4_EXEC_SYS,
+            exec_user,
+            json_mode=True,
+            required_keys=["executive_summary_th", "total_decisions", "total_action_items", "meeting_duration"],
+            tag="agent4_exec",
+        )
+        assert isinstance(exec_out, dict)
+
+        total_decisions = int(exec_out.get("total_decisions", 0) or 0)
+        total_actions = int(exec_out.get("total_action_items", 0) or 0)
+
+        if total_decisions <= 0:
+            total_decisions = len(kg.get("entities", {}).get("decisions", []))
+        if total_actions <= 0:
+            total_actions = len(kg.get("entities", {}).get("action_items", []))
+
+        max_transcript_sec = max(float(s.get("end", 0) or 0) for s in state["segments"])
+        summaries = {
+            "topic_summaries": topic_summaries,
+            "executive_summary_th": str(exec_out.get("executive_summary_th", "")),
+            "total_decisions": total_decisions,
+            "total_action_items": total_actions,
+            "meeting_duration": str(exec_out.get("meeting_duration", sec_to_hms(max_transcript_sec))),
+        }
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            "Agent4 done",
+            topic_summaries=len(topic_summaries),
+            total_decisions=total_decisions,
+            total_action_items=total_actions,
+        )
+
+        self._save_json_if_enabled(state, "agent4_summaries.json", summaries)
+        return {"summaries": summaries, "run_meta": run_meta}
+
+    def node_agent5(self, state: WorkflowState) -> WorkflowState:
+        run_meta = dict(state["run_meta"])
+        artifact_dir = state.get("artifact_dir")
+        self._append_log(run_meta, artifact_dir, "Agent5 start")
+        cleaned = state["cleaned"]
+        summaries = state["summaries"]
+        kg = state["kg"]
+        image_by_topic = state.get("image_by_topic", {})
+
+        safe_kg = sanitize_kg_for_output(kg)
+        agent5_user = fill_template(
+            AGENT5_USR,
+            META=json.dumps(cleaned.get("meeting_meta", {}), ensure_ascii=False),
+            SUMMARIES=json.dumps(summaries, ensure_ascii=False),
+            KG=json.dumps(safe_kg, ensure_ascii=False),
+            IMAGE_BY_TOPIC=json.dumps(image_by_topic, ensure_ascii=False),
+            FULL_CSS_JS=HTML_CSS_JS_BUNDLE,
+        )
+
+        html = self.llm.call(
+            AGENT5_SYS,
+            agent5_user,
+            json_mode=False,
+            required_keys=None,
+            tag="agent5_html",
+        )
+        assert isinstance(html, str)
+        self._append_log(run_meta, artifact_dir, "Agent5 llm done", html_chars=len(html))
+
+        if not html_has_sections_in_order(html):
+            self._append_log(run_meta, artifact_dir, "Agent5 compliance failed", action="fallback_renderer")
+            html = fallback_render_html(cleaned.get("meeting_meta", {}), summaries, safe_kg, image_by_topic)
+
+        Path(self.cfg.output_html_path).write_text(html, encoding="utf-8")
+        self._save_html_if_enabled(state, "agent5_report.html", html)
+
+        run_meta["provider_calls"] = self.llm.call_log
+        run_meta["finished_at"] = datetime.now().isoformat()
+        run_meta["output_html_path"] = str(Path(self.cfg.output_html_path).resolve())
+
+        self._append_log(run_meta, artifact_dir, "Done", output=self.cfg.output_html_path)
+        if self.cfg.save_intermediate:
+            self._append_log(run_meta, artifact_dir, "Artifacts saved", path=state["artifact_dir"])
+            save_json(self._artifact_path(state, "run_metadata.json"), run_meta)
+
+        return {"html": html, "run_meta": run_meta}
+
+    def _build_graph(self) -> StateGraph:
+        graph = StateGraph(WorkflowState)
+        graph.add_node("load_inputs", self.node_load_inputs)
+        graph.add_node("agent1", self.node_agent1)
+        graph.add_node("agent2", self.node_agent2)
+        graph.add_node("agent3a", self.node_agent3a)
+        graph.add_node("agent3b", self.node_agent3b)
+        graph.add_node("agent25", self.node_agent25)
+        graph.add_node("agent4", self.node_agent4)
+        graph.add_node("agent5", self.node_agent5)
+
+        graph.set_entry_point("load_inputs")
+        graph.add_edge("load_inputs", "agent1")
+        graph.add_edge("agent1", "agent2")
+        graph.add_conditional_edges(
+            "agent2",
+            self.route_after_agent2,
+            {"agent3a": "agent3a", "agent3b": "agent3b"},
+        )
+        graph.add_edge("agent3a", "agent25")
+        graph.add_edge("agent3b", "agent25")
+        graph.add_edge("agent25", "agent4")
+        graph.add_edge("agent4", "agent5")
+        graph.add_edge("agent5", END)
+        return graph
+
+    def run(self) -> WorkflowState:
+        return self.graph.invoke({})
