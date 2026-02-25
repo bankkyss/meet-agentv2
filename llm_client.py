@@ -16,41 +16,53 @@ from prompts import JSON_REPAIR_SYS, JSON_REPAIR_USR
 
 
 def clean_json_text(text: str) -> str:
-    t = text.strip()
-    t = re.sub(r"^```(?:json)?", "", t, flags=re.IGNORECASE).strip()
-    t = re.sub(r"```$", "", t).strip()
+    t = text.replace("\ufeff", "").strip()
+    if t.startswith("```"):
+        t = re.sub(r"^```(?:json)?\s*", "", t, flags=re.IGNORECASE).strip()
+        t = re.sub(r"\s*```$", "", t).strip()
     return t
 
 
-def extract_json_candidate(text: str) -> str | None:
-    s = clean_json_text(text)
+def _try_decode_json_fragment(text: str) -> tuple[Any, str] | None:
+    s = text.strip()
+    if not s:
+        return None
+
     try:
-        json.loads(s)
-        return s
+        return json.loads(s), s
     except Exception:
         pass
 
-    start = None
-    depth = 0
+    decoder = json.JSONDecoder()
     for i, ch in enumerate(s):
-        if ch in "[{" and start is None:
-            start = i
-            depth = 1
+        if ch not in "[{":
             continue
-        if start is None:
+        try:
+            obj, end = decoder.raw_decode(s[i:])
+        except json.JSONDecodeError:
             continue
-        if ch in "[{":
-            depth += 1
-        elif ch in "]}":
-            depth -= 1
-            if depth == 0:
-                candidate = s[start : i + 1]
-                try:
-                    json.loads(candidate)
-                    return candidate
-                except Exception:
-                    start = None
-                    depth = 0
+        return obj, s[i : i + end]
+    return None
+
+
+def extract_json_candidate(text: str) -> str | None:
+    direct = _try_decode_json_fragment(text)
+    if direct is not None:
+        _, candidate = direct
+        return candidate
+
+    for block in re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", text, flags=re.IGNORECASE):
+        parsed = _try_decode_json_fragment(block)
+        if parsed is not None:
+            _, candidate = parsed
+            return candidate
+
+    cleaned = clean_json_text(text)
+    parsed = _try_decode_json_fragment(cleaned)
+    if parsed is not None:
+        _, candidate = parsed
+        return candidate
+
     return None
 
 
@@ -65,6 +77,14 @@ def parse_json_or_raise(text: str, label: str) -> dict[str, Any]:
     if not candidate:
         raise PipelineError(f"{label}: no valid JSON object found")
     data = json.loads(candidate)
+    if isinstance(data, str):
+        nested = extract_json_candidate(data)
+        if nested:
+            data = json.loads(nested)
+    if isinstance(data, list):
+        dict_items = [item for item in data if isinstance(item, dict)]
+        if len(dict_items) == 1:
+            data = dict_items[0]
     if not isinstance(data, dict):
         raise PipelineError(f"{label}: JSON root must be object")
     return data

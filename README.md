@@ -68,6 +68,38 @@ python orchestrator.py --resume-artifact-dir ./output/artifacts/run_20260224_104
   - `agent5_report.html`
   - `run_metadata.json`
 
+## Neo4j Visualization
+
+รัน Neo4j (ตั้งรหัสผ่านให้ชัดเจนก่อน):
+
+```bash
+docker run -d --name meetsum-neo4j \
+  -p 7474:7474 -p 7687:7687 \
+  -e NEO4J_AUTH=neo4j/neo4j12345 \
+  neo4j:5
+```
+
+import `agent2_kg.json` เข้า Neo4j:
+
+```bash
+pip install -r requirements.txt
+python3 scripts/import_agent2_kg_to_neo4j.py \
+  --kg-path ./output/artifacts/agent2_kg.json \
+  --uri bolt://localhost:7687 \
+  --user neo4j \
+  --password neo4j12345
+```
+
+เปิด Browser ที่ `http://localhost:7474` แล้วลอง query:
+
+```cypher
+MATCH (n) RETURN n LIMIT 200;
+```
+
+```cypher
+MATCH (t:Topic)-[r]-(x) RETURN t, r, x LIMIT 300;
+```
+
 ## Notes
 
 - ใช้ map-reduce chunking สำหรับ transcript/OCR ขนาดใหญ่

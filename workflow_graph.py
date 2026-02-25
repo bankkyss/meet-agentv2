@@ -681,6 +681,214 @@ class MeetingWorkflow:
             topics = self._synthesize_topics_from_timeline(cleaned)
         return {"entities": entities, "topics": topics}
 
+    def _agent25_call_llm(
+        self,
+        cap_chunk: list[dict[str, Any]],
+        topic_no_vec: list[dict[str, Any]],
+        *,
+        tag: str,
+    ) -> dict[str, Any]:
+        user = fill_template(
+            AGENT25_USR,
+            CAPTURES=json.dumps(cap_chunk, ensure_ascii=False),
+            KG_TOPICS=json.dumps(topic_no_vec, ensure_ascii=False),
+        )
+        out = self.llm.call(
+            AGENT25_SYS,
+            user,
+            json_mode=True,
+            required_keys=["image_manifest", "statistics"],
+            tag=tag,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def _agent25_match_topic(
+        self,
+        timestamp_sec: float,
+        ocr_text: str,
+        topics: list[dict[str, Any]],
+    ) -> tuple[str, str]:
+        t_sec = int(max(timestamp_sec, 0))
+        for topic in topics:
+            if not isinstance(topic, dict):
+                continue
+            tid = str(topic.get("id", "") or "")
+            tname = str(topic.get("name", "") or "")
+            start_hms = str(topic.get("start_timestamp", "00:00:00") or "00:00:00")
+            end_hms = str(topic.get("end_timestamp", start_hms) or start_hms)
+            start_sec = hms_to_sec(start_hms)
+            end_sec = hms_to_sec(end_hms)
+            if start_sec <= t_sec <= max(end_sec, start_sec):
+                return tid, tname
+
+        lowered = ocr_text.lower()
+        best: tuple[int, str, str] = (-1, "", "")
+        for topic in topics:
+            if not isinstance(topic, dict):
+                continue
+            tid = str(topic.get("id", "") or "")
+            tname = str(topic.get("name", "") or "")
+            tokens = [tok for tok in re.findall(r"[A-Za-z0-9ก-๙]{3,}", tname.lower()) if len(tok) >= 3]
+            score = sum(1 for tok in set(tokens) if tok and tok in lowered)
+            if score > best[0]:
+                best = (score, tid, tname)
+
+        if best[0] > 0:
+            return best[1], best[2]
+        return "", ""
+
+    def _agent25_chunk_fallback(
+        self,
+        cap_chunk: list[dict[str, Any]],
+        topic_no_vec: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        manifest: list[dict[str, Any]] = []
+        by_type: Counter[str] = Counter()
+        filtered = 0
+
+        for cap in cap_chunk:
+            ocr_text = str(cap.get("ocr_text", "") or "")
+            lowered = ocr_text.lower()
+            capture_index = int(cap.get("capture_index", 0) or 0)
+            timestamp_sec = float(cap.get("timestamp_sec", 0) or 0)
+            timestamp_hms = str(cap.get("timestamp_hms", sec_to_hms(timestamp_sec)) or sec_to_hms(timestamp_sec))
+            image_path = str(cap.get("image_path", "") or "")
+            file_size = int(cap.get("ocr_file_size_bytes", 0) or 0)
+            skipped_reason = str(cap.get("ocr_skipped_reason", "") or "").strip()
+
+            is_filtered = bool(skipped_reason) or file_size < 30000 or not ocr_text.strip()
+            if is_filtered:
+                filtered += 1
+                by_type["SKIPPED"] += 1
+                continue
+
+            if "<table" in lowered:
+                content_type = "DATA_TABLE"
+            elif "<figure" in lowered and any(k in lowered for k in ["chart", "graph", "แผนภูมิ", "กราฟ"]):
+                content_type = "CHART"
+            elif "<figure" in lowered:
+                content_type = "PHOTO"
+            elif any(k in lowered for k in [".pdf", ".ppt", ".pptx", "adobe acrobat", "powerpoint"]):
+                content_type = "DOCUMENT"
+            elif "zoom" in lowered and any(k in lowered for k in ["participant", "gallery", "ผู้เข้าร่วม"]):
+                content_type = "ZOOM_SCREEN"
+            else:
+                content_type = "SLIDE_TEXT"
+            by_type[content_type] += 1
+
+            cleaned_text = re.sub(r"<[^>]+>", " ", ocr_text)
+            lines = [ln.strip() for ln in cleaned_text.splitlines() if ln.strip()]
+            content_summary = lines[0][:180] if lines else ""
+            topic_id, topic_name = self._agent25_match_topic(timestamp_sec, cleaned_text, topic_no_vec)
+
+            insertion_priority = {
+                "DATA_TABLE": 5,
+                "PHOTO": 4,
+                "CHART": 4,
+                "DOCUMENT": 3,
+                "SLIDE_TEXT": 2,
+                "ZOOM_SCREEN": 1,
+            }.get(content_type, 2)
+
+            render_as = {
+                "DATA_TABLE": "html_table",
+                "PHOTO": "photo_lightbox",
+                "CHART": "chart_embed",
+                "DOCUMENT": "document_ref",
+                "SLIDE_TEXT": "slide_text",
+                "ZOOM_SCREEN": "slide_text",
+            }.get(content_type, "slide_text")
+
+            table_html = str(cap.get("table_html", "") or "")
+            if not table_html and "<table" in lowered:
+                m = re.search(r"(<table[\s\S]*?</table>)", ocr_text, flags=re.IGNORECASE)
+                table_html = m.group(1) if m else ""
+
+            manifest.append(
+                {
+                    "capture_index": capture_index,
+                    "timestamp_hms": timestamp_hms,
+                    "timestamp_sec": int(timestamp_sec),
+                    "image_path": image_path,
+                    "content_type": content_type,
+                    "content_summary": content_summary,
+                    "topic_id": topic_id,
+                    "topic_name": topic_name,
+                    "insertion_priority": insertion_priority,
+                    "caption_th": f"สไลด์เกี่ยวกับ {content_summary or 'ข้อมูลการประชุม'}",
+                    "special_pattern": None,
+                    "pair_index": None,
+                    "render_as": render_as,
+                    "table_html": table_html,
+                    "ocr_file_size_bytes": file_size,
+                }
+            )
+
+        return {
+            "image_manifest": manifest,
+            "statistics": {
+                "total": len(cap_chunk),
+                "filtered": filtered,
+                "by_type": dict(by_type),
+                "before_after_pairs": [],
+                "data_series": [],
+            },
+        }
+
+    def _agent25_chunk_recover(
+        self,
+        cap_chunk: list[dict[str, Any]],
+        topic_no_vec: list[dict[str, Any]],
+        run_meta: dict[str, Any],
+        artifact_dir: str | None,
+        *,
+        chunk_label: str,
+        tag_prefix: str,
+    ) -> dict[str, Any]:
+        if len(cap_chunk) <= 1:
+            self._append_log(
+                run_meta,
+                artifact_dir,
+                "Agent2.5 deterministic fallback",
+                chunk=chunk_label,
+                captures=len(cap_chunk),
+            )
+            return self._agent25_chunk_fallback(cap_chunk, topic_no_vec)
+
+        split_at = max(1, len(cap_chunk) // 2)
+        parts = [cap_chunk[:split_at], cap_chunk[split_at:]]
+        parts = [p for p in parts if p]
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            "Agent2.5 split recover",
+            chunk=chunk_label,
+            subchunks=len(parts),
+            split_at=split_at,
+        )
+
+        partials: list[dict[str, Any]] = []
+        for sidx, sub in enumerate(parts, start=1):
+            try:
+                partial = self._agent25_call_llm(
+                    sub,
+                    topic_no_vec,
+                    tag=f"{tag_prefix}_sub{sidx}",
+                )
+            except Exception as sub_exc:
+                self._append_log(
+                    run_meta,
+                    artifact_dir,
+                    "Agent2.5 subchunk fallback",
+                    chunk=chunk_label,
+                    subchunk=f"{sidx}/{len(parts)}",
+                    error=str(sub_exc),
+                )
+                partial = self._agent25_chunk_fallback(sub, topic_no_vec)
+            partials.append(partial)
+        return merge_partial_image_outputs(partials)
+
     def node_load_inputs(self, _: WorkflowState) -> WorkflowState:
         out_path = Path(self.cfg.output_html_path)
         ensure_dir(out_path.parent)
@@ -743,6 +951,16 @@ class MeetingWorkflow:
             captures=len(captures),
             mode=self.cfg.summarize_mode,
             concurrency=self.cfg.pipeline_max_concurrency,
+        )
+        self._append_log(
+            run_meta,
+            str(artifact_dir),
+            f"output path : {Path(self.cfg.output_html_path).resolve()}",
+        )
+        self._append_log(
+            run_meta,
+            str(artifact_dir),
+            f"artifact path : {artifact_dir.resolve()}",
         )
         if resume_cleaned:
             self._append_log(
@@ -1228,25 +1446,42 @@ class MeetingWorkflow:
 
         def run_one_chunk(item: tuple[int, list[dict[str, Any]]]) -> tuple[int, dict[str, Any]]:
             idx, cap_chunk = item
-            user = fill_template(
-                AGENT25_USR,
-                CAPTURES=json.dumps(cap_chunk, ensure_ascii=False),
-                KG_TOPICS=json.dumps(topic_no_vec, ensure_ascii=False),
-            )
-            out = self.llm.call(
-                AGENT25_SYS,
-                user,
-                json_mode=True,
-                required_keys=["image_manifest", "statistics"],
-                tag=f"agent25_map_chunk_{idx}",
-            )
-            assert isinstance(out, dict)
+            out = self._agent25_call_llm(cap_chunk, topic_no_vec, tag=f"agent25_map_chunk_{idx}")
             return idx, out
 
         workers = self._effective_workers(len(chunk_inputs))
         if workers == 1:
             for idx, cap_chunk in chunk_inputs:
-                _, out = run_one_chunk((idx, cap_chunk))
+                try:
+                    _, out = run_one_chunk((idx, cap_chunk))
+                except Exception as exc:
+                    chunk_label = f"{idx}/{total_chunks}"
+                    self._append_log(
+                        run_meta,
+                        artifact_dir,
+                        "Agent2.5 chunk failed",
+                        chunk=chunk_label,
+                        error=str(exc),
+                    )
+                    try:
+                        out = self._agent25_chunk_recover(
+                            cap_chunk,
+                            topic_no_vec,
+                            run_meta,
+                            artifact_dir,
+                            chunk_label=chunk_label,
+                            tag_prefix=f"agent25_map_chunk_{idx}",
+                        )
+                    except Exception as recover_exc:
+                        self._append_log(
+                            run_meta,
+                            artifact_dir,
+                            "Agent2.5 recover failed",
+                            chunk=chunk_label,
+                            error=str(recover_exc),
+                            action="deterministic_fallback",
+                        )
+                        out = self._agent25_chunk_fallback(cap_chunk, topic_no_vec)
                 partial_images.append(out)
                 self._append_log(
                     run_meta,
@@ -1258,9 +1493,10 @@ class MeetingWorkflow:
         else:
             results: dict[int, dict[str, Any]] = {}
             with ThreadPoolExecutor(max_workers=workers) as executor:
-                futures = {executor.submit(run_one_chunk, item): item[0] for item in chunk_inputs}
+                futures = {executor.submit(run_one_chunk, item): item for item in chunk_inputs}
                 for future in as_completed(futures):
-                    idx = futures[future]
+                    idx, cap_chunk = futures[future]
+                    chunk_label = f"{idx}/{total_chunks}"
                     try:
                         _, out = future.result()
                     except Exception as exc:
@@ -1268,16 +1504,34 @@ class MeetingWorkflow:
                             run_meta,
                             artifact_dir,
                             "Agent2.5 chunk failed",
-                            chunk=f"{idx}/{total_chunks}",
+                            chunk=chunk_label,
                             error=str(exc),
                         )
-                        raise
+                        try:
+                            out = self._agent25_chunk_recover(
+                                cap_chunk,
+                                topic_no_vec,
+                                run_meta,
+                                artifact_dir,
+                                chunk_label=chunk_label,
+                                tag_prefix=f"agent25_map_chunk_{idx}",
+                            )
+                        except Exception as recover_exc:
+                            self._append_log(
+                                run_meta,
+                                artifact_dir,
+                                "Agent2.5 recover failed",
+                                chunk=chunk_label,
+                                error=str(recover_exc),
+                                action="deterministic_fallback",
+                            )
+                            out = self._agent25_chunk_fallback(cap_chunk, topic_no_vec)
                     results[idx] = out
                     self._append_log(
                         run_meta,
                         artifact_dir,
                         "Agent2.5 chunk done",
-                        chunk=f"{idx}/{total_chunks}",
+                        chunk=chunk_label,
                         manifest=len(out.get("image_manifest", [])),
                     )
             for idx in sorted(results):
@@ -1325,6 +1579,8 @@ class MeetingWorkflow:
         capture_by_index = {
             int(c.get("capture_index", 0) or 0): c for c in captures if int(c.get("capture_index", 0) or 0) > 0
         }
+        replaced_image_paths = 0
+        resolved_image_paths = 0
 
         for item in manifest:
             capture_index = int(item.get("capture_index", 0) or 0)
@@ -1342,10 +1598,23 @@ class MeetingWorkflow:
                     item["topic_id"] = best_id
                     item["topic_name"] = topic_name_map.get(best_id, item.get("topic_name", ""))
 
+            # Do not trust LLM-generated image_path. Always normalize from OCR capture index when available.
             raw_path = str(item.get("image_path", "") or "")
+            source_cap = capture_by_index.get(capture_index)
+            if source_cap:
+                source_path = str(source_cap.get("image_path", "") or "")
+                if source_path:
+                    if raw_path and raw_path != source_path:
+                        item["llm_image_path"] = raw_path
+                    if raw_path != source_path:
+                        replaced_image_paths += 1
+                    item["image_path"] = source_path
+                    raw_path = source_path
+
             resolved = resolve_image_path(raw_path, self.cfg.image_base_dir, self.cfg.ocr_path)
             if resolved:
                 item["resolved_image_path"] = str(resolved)
+                resolved_image_paths += 1
 
             render_as = str(item.get("render_as", "") or "")
             special = str(item.get("special_pattern", "") or "")
@@ -1365,6 +1634,14 @@ class MeetingWorkflow:
                         item["before_base64"] = image_to_base64_data_uri(resolved)
                     if pair_resolved and self.cfg.image_embed_mode == "base64":
                         item["after_base64"] = image_to_base64_data_uri(pair_resolved)
+
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            "Agent2.5 image paths normalized",
+            replaced=replaced_image_paths,
+            resolved=resolved_image_paths,
+        )
 
         image_by_topic = group_manifest_by_topic(
             manifest,
@@ -1641,6 +1918,11 @@ class MeetingWorkflow:
         run_meta["output_html_path"] = str(Path(self.cfg.output_html_path).resolve())
 
         self._append_log(run_meta, artifact_dir, "Done", output=self.cfg.output_html_path)
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            f"output path : {Path(self.cfg.output_html_path).resolve()}",
+        )
         if self.cfg.save_intermediate:
             self._append_log(run_meta, artifact_dir, "Artifacts saved", path=state["artifact_dir"])
             save_json(self._artifact_path(state, "run_metadata.json"), run_meta)
