@@ -10,7 +10,11 @@ from typing import Any, TypedDict
 
 from langgraph.graph import END, StateGraph
 
-from html_renderer import fallback_render_html, html_has_sections_in_order
+from html_renderer import (
+    fallback_render_html,
+    fallback_render_html_react_official,
+    html_has_sections_in_order,
+)
 from image_processor import (
     group_manifest_by_topic,
     image_to_base64_data_uri,
@@ -929,6 +933,7 @@ class MeetingWorkflow:
                 "mode": self.cfg.summarize_mode,
                 "include_ocr": self.cfg.include_ocr,
                 "image_insert_enabled": self.cfg.image_insert_enabled,
+                "report_layout_mode": self.cfg.report_layout_mode,
                 "image_embed_mode": self.cfg.image_embed_mode,
                 "allow_ollama_chat_fallback": self.cfg.allow_ollama_chat_fallback,
                 "agent1_chunk_size": self.cfg.agent1_chunk_size,
@@ -1930,35 +1935,76 @@ class MeetingWorkflow:
     def node_agent5(self, state: WorkflowState) -> WorkflowState:
         run_meta = dict(state["run_meta"])
         artifact_dir = state.get("artifact_dir")
-        self._append_log(run_meta, artifact_dir, "Agent5 start")
+        self._append_log(run_meta, artifact_dir, "Agent5 start", layout=self.cfg.report_layout_mode)
         cleaned = state["cleaned"]
         summaries = state["summaries"]
         kg = state["kg"]
         image_by_topic = state.get("image_by_topic", {})
+        topic_rows = summaries.get("topic_summaries", []) if isinstance(summaries.get("topic_summaries"), list) else []
+        summary_topic_ids = {
+            str(t.get("topic_id", "") or "")
+            for t in topic_rows
+            if isinstance(t, dict) and str(t.get("topic_id", "") or "")
+        }
+        image_topic_ids = {
+            str(topic_id)
+            for topic_id, rows in image_by_topic.items()
+            if isinstance(rows, list) and rows
+        }
+        image_items = sum(len(rows) for rows in image_by_topic.values() if isinstance(rows, list))
+        unmatched_image_items = sum(
+            len(rows)
+            for topic_id, rows in image_by_topic.items()
+            if isinstance(rows, list) and str(topic_id) not in summary_topic_ids
+        )
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            "Agent5 image coverage",
+            summary_topics=len(summary_topic_ids),
+            image_topics=len(image_topic_ids),
+            overlap_topics=len(summary_topic_ids & image_topic_ids),
+            image_items=image_items,
+            unmatched_image_items=unmatched_image_items,
+        )
 
         safe_kg = sanitize_kg_for_output(kg)
-        agent5_user = fill_template(
-            AGENT5_USR,
-            META=json.dumps(cleaned.get("meeting_meta", {}), ensure_ascii=False),
-            SUMMARIES=json.dumps(summaries, ensure_ascii=False),
-            KG=json.dumps(safe_kg, ensure_ascii=False),
-            IMAGE_BY_TOPIC=json.dumps(image_by_topic, ensure_ascii=False),
-            FULL_CSS_JS=HTML_CSS_JS_BUNDLE,
-        )
+        if self.cfg.report_layout_mode == "react_official":
+            html = fallback_render_html_react_official(
+                cleaned.get("meeting_meta", {}),
+                summaries,
+                safe_kg,
+                image_by_topic,
+            )
+            self._append_log(
+                run_meta,
+                artifact_dir,
+                "Agent5 official renderer done",
+                html_chars=len(html),
+            )
+        else:
+            agent5_user = fill_template(
+                AGENT5_USR,
+                META=json.dumps(cleaned.get("meeting_meta", {}), ensure_ascii=False),
+                SUMMARIES=json.dumps(summaries, ensure_ascii=False),
+                KG=json.dumps(safe_kg, ensure_ascii=False),
+                IMAGE_BY_TOPIC=json.dumps(image_by_topic, ensure_ascii=False),
+                FULL_CSS_JS=HTML_CSS_JS_BUNDLE,
+            )
 
-        html = self.llm.call(
-            AGENT5_SYS,
-            agent5_user,
-            json_mode=False,
-            required_keys=None,
-            tag="agent5_html",
-        )
-        assert isinstance(html, str)
-        self._append_log(run_meta, artifact_dir, "Agent5 llm done", html_chars=len(html))
+            html = self.llm.call(
+                AGENT5_SYS,
+                agent5_user,
+                json_mode=False,
+                required_keys=None,
+                tag="agent5_html",
+            )
+            assert isinstance(html, str)
+            self._append_log(run_meta, artifact_dir, "Agent5 llm done", html_chars=len(html))
 
-        if not html_has_sections_in_order(html):
-            self._append_log(run_meta, artifact_dir, "Agent5 compliance failed", action="fallback_renderer")
-            html = fallback_render_html(cleaned.get("meeting_meta", {}), summaries, safe_kg, image_by_topic)
+            if not html_has_sections_in_order(html):
+                self._append_log(run_meta, artifact_dir, "Agent5 compliance failed", action="fallback_renderer")
+                html = fallback_render_html(cleaned.get("meeting_meta", {}), summaries, safe_kg, image_by_topic)
 
         Path(self.cfg.output_html_path).write_text(html, encoding="utf-8")
         self._save_html_if_enabled(state, "agent5_report.html", html)

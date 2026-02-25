@@ -10,6 +10,10 @@ from workflow_graph import MeetingWorkflow
 
 
 def build_config(args: argparse.Namespace) -> PipelineConfig:
+    report_layout_mode = (args.report_layout or os.getenv("REPORT_LAYOUT_MODE", "current")).strip().lower()
+    if report_layout_mode not in {"current", "react_official"}:
+        report_layout_mode = "current"
+
     return PipelineConfig(
         typhoon_api_key=os.getenv("TYPHOON_API_KEY", "").strip(),
         typhoon_base_url=os.getenv("TYPHOON_BASE_URL", "https://api.opentyphoon.ai/v1").strip(),
@@ -25,6 +29,7 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         summarize_mode=(args.mode or os.getenv("SUMMARIZE_MODE", "agenda")).strip().lower(),
         include_ocr=env_bool("INCLUDE_OCR", True),
         image_insert_enabled=env_bool("IMAGE_INSERT_ENABLED", True),
+        report_layout_mode=report_layout_mode,
         image_base_dir=os.getenv("IMAGE_BASE_DIR", "./data/video_change_ocr/run_20260213_163003").strip(),
         image_embed_mode=os.getenv("IMAGE_EMBED_MODE", "base64").strip().lower(),
         image_max_per_topic=env_int("IMAGE_MAX_PER_TOPIC", 4),
@@ -58,6 +63,11 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Meeting summarizer orchestrator (LangGraph)")
     parser.add_argument("--mode", choices=["agenda", "auto"], help="Summarization mode")
+    parser.add_argument(
+        "--report-layout",
+        choices=["current", "react_official"],
+        help="HTML report layout mode",
+    )
     parser.add_argument("--output", help="Output HTML path")
     parser.add_argument("--save-artifacts", choices=["true", "false"], help="Save intermediate files")
     parser.add_argument(

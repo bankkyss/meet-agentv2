@@ -5,7 +5,6 @@ from __future__ import annotations
 from html import escape
 from typing import Any
 
-from pipeline_utils import hms_to_sec
 from prompts import HTML_CSS_JS_BUNDLE
 
 
@@ -133,6 +132,26 @@ def render_images_block(images: list[dict[str, Any]], start_num: int) -> tuple[s
     return "\n".join(html_parts), n
 
 
+def _collect_unmapped_images(
+    image_by_topic: dict[str, list[dict[str, Any]]],
+    mapped_topic_ids: set[str],
+) -> list[dict[str, Any]]:
+    extra: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for topic_id, items in image_by_topic.items():
+        if topic_id in mapped_topic_ids:
+            continue
+        for item in items:
+            cap_idx = int(item.get("capture_index", 0) or 0)
+            if cap_idx > 0 and cap_idx in seen:
+                continue
+            if cap_idx > 0:
+                seen.add(cap_idx)
+            extra.append(item)
+    extra.sort(key=lambda x: float(x.get("timestamp_sec", 0) or 0))
+    return extra
+
+
 def fallback_render_html(
     meta: dict[str, Any],
     summaries: dict[str, Any],
@@ -175,20 +194,6 @@ def fallback_render_html(
             else:
                 action_rows.append((agenda_no, str(a), owner_default, "", agenda_no))
 
-    flat_images: list[dict[str, Any]] = []
-    for topic_id, items in image_by_topic.items():
-        for it in items:
-            row = dict(it)
-            row["_topic_id"] = topic_id
-            flat_images.append(row)
-
-    max_sec = 1
-    for t in topic_summaries:
-        tr = str(t.get("time_range", "") or "")
-        parts = [x.strip() for x in tr.replace("–", "-").split("-")]
-        if len(parts) == 2:
-            max_sec = max(max_sec, hms_to_sec(parts[1]))
-
     toc_rows = []
     for idx, t in enumerate(topic_summaries, start=1):
         ag = str(t.get("agenda_number", idx))
@@ -206,8 +211,10 @@ def fallback_render_html(
 
     topic_html: list[str] = []
     fig_counter = 1
+    mapped_topic_ids: set[str] = set()
     for idx, t in enumerate(topic_summaries, start=1):
         topic_id = str(t.get("topic_id", "") or f"T{idx:03d}")
+        mapped_topic_ids.add(topic_id)
         dept = str(t.get("department", "") or "")
         trange = str(t.get("time_range", "") or "")
         start_hms = "00:00:00"
@@ -277,25 +284,17 @@ def fallback_render_html(
             "</section>"
         )
 
-    timeline_segments = []
-    colors = {
-        "DATA_TABLE": "#1a3a5c",
-        "PHOTO": "#2e7d32",
-        "CHART": "#e65100",
-        "DOCUMENT": "#5e35b1",
-        "SLIDE_TEXT": "#546e7a",
-    }
-    for item in flat_images:
-        ts = float(item.get("timestamp_sec", 0) or 0)
-        left = max(min(ts / max_sec * 100, 100), 0)
-        width = max(100 / max(len(flat_images), 1), 1.4)
-        ctype = str(item.get("content_type", "SLIDE_TEXT"))
-        color = colors.get(ctype, "#607d8b")
-        label = escape(str(item.get("timestamp_hms", "")))
-        title = escape(f"{item.get('topic_name', '')} | {item.get('content_summary', '')}")
-        timeline_segments.append(
-            f'<div class="timeline-segment" style="left:{left:.2f}%;width:{width:.2f}%;background:{color};" title="{title}">'
-            f"<span>{label}</span></div>"
+    unmatched_images = _collect_unmapped_images(image_by_topic, mapped_topic_ids)
+    unmatched_html = ""
+    if unmatched_images:
+        unmapped_blocks, fig_counter = render_images_block(unmatched_images, fig_counter)
+        unmatched_html = (
+            '<h2 class="section-title">ภาคผนวก — ภาพประกอบที่ยังไม่จับคู่หัวข้อ</h2>'
+            '<div class="summary-text"><p>'
+            f"ตรวจพบภาพจาก OCR เพิ่มเติม {len(unmatched_images)} รายการ "
+            "แต่ไม่พบหัวข้อสรุปที่แมปตรงกันในรอบนี้ จึงแสดงรวมในภาคผนวก"
+            "</p></div>"
+            f'<div class="summary-text">{unmapped_blocks}</div>'
         )
 
     attendees_rows = []
@@ -344,7 +343,6 @@ def fallback_render_html(
 {HTML_CSS_JS_BUNDLE}
 </head>
 <body>
-<button class="print-btn" onclick="window.print()">พิมพ์รายงาน</button>
 <section class="cover">
   <h1>{escape(str(meta.get('company', 'บริษัทแสงฟ้าก่อสร้าง จำกัด')))}</h1>
   <h2>{escape(str(meta.get('title', 'รายงานการประชุมประจำเดือน')))}</h2>
@@ -393,10 +391,284 @@ def fallback_render_html(
     <tbody>{''.join(action_table_rows) or '<tr><td colspan="5">ไม่มีข้อมูล</td></tr>'}</tbody>
   </table>
 
-  <h2 class="section-title">ภาคผนวก — Slide Timeline</h2>
-  <div class="timeline-bar">{''.join(timeline_segments)}</div>
+  {unmatched_html}
+
 </main>
 </body>
-</html>
-"""
+    </html>
+    """
+    return html
+
+
+def _pick_image_src(item: dict[str, Any], preferred: str = "image_base64") -> str:
+    candidates = []
+    if preferred:
+        candidates.append(str(item.get(preferred, "") or ""))
+    candidates.extend(
+        [
+            str(item.get("image_base64", "") or ""),
+            str(item.get("before_base64", "") or ""),
+            str(item.get("after_base64", "") or ""),
+            str(item.get("resolved_image_path", "") or ""),
+            str(item.get("image_path", "") or ""),
+        ]
+    )
+    for src in candidates:
+        if src:
+            return src
+    return ""
+
+
+def _render_official_media(item: dict[str, Any], fig_num: int) -> str:
+    render_as = str(item.get("render_as", "") or "")
+    summary = escape(str(item.get("content_summary", "") or "ภาพประกอบ"))
+    caption = escape(str(item.get("caption_th", "") or ""))
+    ts = escape(str(item.get("timestamp_hms", "") or ""))
+
+    if render_as == "html_table":
+        table_html = str(item.get("table_html", "") or "")
+        if table_html:
+            return (
+                '<div class="agenda-image-wrap">'
+                f'<div class="agenda-image-caption"><strong>ตารางที่ {fig_num}</strong> {summary}</div>'
+                f"{table_html}"
+                f'<div class="agenda-image-link">{caption} <span class="ts">{ts}</span></div>'
+                "</div>"
+            )
+
+    if render_as == "before_after" or str(item.get("special_pattern", "") or "") == "BEFORE_AFTER":
+        before = escape(_pick_image_src(item, preferred="before_base64"))
+        after = escape(_pick_image_src(item, preferred="after_base64"))
+        return (
+            '<div class="agenda-image-wrap">'
+            '<div class="before-after-grid">'
+            f'<div><img src="{before}" alt="before"><div class="ba-tag">ก่อน</div></div>'
+            f'<div><img src="{after}" alt="after"><div class="ba-tag">หลัง</div></div>'
+            "</div>"
+            f'<div class="agenda-image-caption"><strong>รูปที่ {fig_num}</strong> {caption}</div>'
+            f'<div class="agenda-image-link">เวลาอ้างอิง: {ts}</div>'
+            "</div>"
+        )
+
+    src = escape(_pick_image_src(item))
+    if not src:
+        return ""
+    return (
+        '<div class="agenda-image-wrap">'
+        f'<img src="{src}" alt="{summary}" loading="lazy"/>'
+        f'<div class="agenda-image-caption"><strong>รูปที่ {fig_num}</strong> {caption}</div>'
+        f'<div class="agenda-image-link">เวลาอ้างอิง: {ts}</div>'
+        "</div>"
+    )
+
+
+def fallback_render_html_react_official(
+    meta: dict[str, Any],
+    summaries: dict[str, Any],
+    kg: dict[str, Any],
+    image_by_topic: dict[str, list[dict[str, Any]]],
+) -> str:
+    attendees = meta.get("attendees", []) if isinstance(meta.get("attendees"), list) else []
+    topic_summaries = summaries.get("topic_summaries", [])
+    if not isinstance(topic_summaries, list):
+        topic_summaries = []
+
+    attendees_main = [a for a in attendees if isinstance(a, dict) and str(a.get("type", "main")) == "main"]
+    attendees_supp = [a for a in attendees if isinstance(a, dict) and str(a.get("type", "main")) != "main"]
+
+    def attendee_items(rows: list[dict[str, Any]]) -> str:
+        out = []
+        for i, a in enumerate(rows, start=1):
+            out.append(
+                f'<div class="attendee-item">{i}. {escape(str(a.get("name", "") or ""))}'
+                f' - {escape(str(a.get("department", "") or ""))}</div>'
+            )
+        return "".join(out)
+
+    exec_summary = split_paragraphs(str(summaries.get("executive_summary_th", "") or ""))
+    if not exec_summary:
+        exec_summary = ["ไม่มีข้อมูลบทสรุปผู้บริหาร"]
+
+    decision_rows: list[tuple[str, str, str]] = []
+    action_rows: list[tuple[str, str, str, str]] = []
+    topic_html: list[str] = []
+    figure_num = 1
+    mapped_topic_ids: set[str] = set()
+
+    for idx, t in enumerate(topic_summaries, start=1):
+        if not isinstance(t, dict):
+            continue
+        agenda_number = str(t.get("agenda_number", idx) or idx)
+        topic_id = str(t.get("topic_id", "") or f"T{idx:03d}")
+        mapped_topic_ids.add(topic_id)
+        title = str(t.get("title", "") or "")
+        department = str(t.get("department", "") or "")
+        time_range = str(t.get("time_range", "") or "")
+        presenter = str(t.get("presenter", "") or "")
+
+        imgs = list(image_by_topic.get(topic_id, []))
+        imgs.sort(
+            key=lambda x: (
+                -int(x.get("insertion_priority", 0) or 0),
+                float(x.get("timestamp_sec", 0) or 0),
+            )
+        )
+        media_blocks: list[str] = []
+        for item in imgs:
+            block = _render_official_media(item, figure_num)
+            if block:
+                media_blocks.append(block)
+                figure_num += 1
+
+        summary_blocks = "".join(f"<p>{escape(p)}</p>" for p in split_paragraphs(str(t.get("summary_th", "") or "")))
+        if not summary_blocks:
+            summary_blocks = "<p>ไม่มีข้อมูลสรุป</p>"
+
+        decisions = t.get("decisions", [])
+        if not isinstance(decisions, list):
+            decisions = []
+        decision_list = "".join(f"<li>{escape(str(d))}</li>" for d in decisions) or "<li>-</li>"
+        for d in decisions:
+            decision_rows.append((agenda_number, str(d), presenter))
+
+        actions = t.get("action_items", [])
+        if not isinstance(actions, list):
+            actions = []
+        action_trs: list[str] = []
+        for a in actions:
+            if isinstance(a, dict):
+                task = str(a.get("task", "") or "")
+                owner = str(a.get("owner", presenter) or presenter)
+                deadline = str(a.get("deadline", "") or "")
+            else:
+                task = str(a)
+                owner = presenter
+                deadline = ""
+            action_rows.append((agenda_number, task, owner, deadline))
+            action_trs.append(
+                "<tr>"
+                f"<td>{escape(task)}</td><td>{escape(owner)}</td><td>{escape(deadline)}</td>"
+                "</tr>"
+            )
+        if not action_trs:
+            action_trs = ["<tr><td>-</td><td>-</td><td>-</td></tr>"]
+
+        topic_html.append(
+            f'<h3>วาระที่ {escape(agenda_number)} - {escape(title)}</h3>'
+            '<div><h4>รายละเอียดวาระ</h4>'
+            f'<blockquote>หน่วยงาน: {escape(department)} | ช่วงเวลา: {escape(time_range)}</blockquote>'
+            f"{''.join(media_blocks)}"
+            f"{summary_blocks}"
+            "</div>"
+            '<div><h4>มติที่ประชุม</h4>'
+            f"<ul>{decision_list}</ul></div>"
+            '<div><h4>งานที่ต้องดำเนินการ</h4>'
+            '<table><tr><th>งาน</th><th>ผู้รับผิดชอบ</th><th>กำหนดเสร็จ</th></tr>'
+            f"{''.join(action_trs)}</table></div>"
+        )
+
+    unmapped_images = _collect_unmapped_images(image_by_topic, mapped_topic_ids)
+    unmapped_blocks: list[str] = []
+    for item in unmapped_images:
+        block = _render_official_media(item, figure_num)
+        if block:
+            unmapped_blocks.append(block)
+            figure_num += 1
+    unmapped_html = ""
+    if unmapped_blocks:
+        unmapped_html = (
+            "<h3>ภาคผนวก - ภาพประกอบที่ยังไม่จับคู่หัวข้อ</h3>"
+            "<p>ภาพที่ตรวจพบจาก OCR แต่ไม่ตรงกับวาระที่ถูกสรุปในรอบนี้</p>"
+            f"{''.join(unmapped_blocks)}"
+        )
+
+    decision_table_rows = "".join(
+        "<tr>"
+        f"<td>{i}</td><td>{escape(a)}</td><td>{escape(b)}</td><td>{escape(c)}</td>"
+        "</tr>"
+        for i, (a, b, c) in enumerate(decision_rows, start=1)
+    ) or "<tr><td colspan='4'>ไม่มีข้อมูล</td></tr>"
+
+    action_table_rows = "".join(
+        "<tr>"
+        f"<td>{i}</td><td>{escape(a)}</td><td>{escape(b)}</td><td>{escape(c)}</td><td>{escape(d)}</td>"
+        "</tr>"
+        for i, (a, b, c, d) in enumerate(action_rows, start=1)
+    ) or "<tr><td colspan='5'>ไม่มีข้อมูล</td></tr>"
+
+    html = f"""<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <title>{escape(str(meta.get("title", "รายงานการประชุม") or "รายงานการประชุม"))}</title>
+  <style>
+    * {{ font-family: 'Sarabun', sans-serif !important; box-sizing: border-box; }}
+    body {{ max-width: 1000px; margin: 0 auto; padding: 28px 36px; color: #111; line-height: 1.45; background-color: #fff; font-size: 15px; }}
+    .header-box {{ text-align: center; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 2px solid #111; }}
+    .attendees-box {{ padding: 0; margin-bottom: 18px; font-size: 0.98em; }}
+    .attendees-header {{ font-weight: 700; margin-top: 8px; margin-bottom: 2px; }}
+    .attendee-item {{ margin-left: 0; }}
+    h3 {{ margin-top: 20px; margin-bottom: 8px; padding: 0; font-size: 1.08em; border-bottom: 1px solid #666; }}
+    h4 {{ margin-top: 12px; margin-bottom: 6px; font-size: 1.0em; }}
+    ul {{ margin-top: 4px; margin-bottom: 8px; }}
+    li {{ margin-bottom: 2px; }}
+    table {{ width: 100%; border-collapse: collapse; margin: 10px 0 12px; border: 1px solid #000; }}
+    th, td {{ border: 1px solid #000; padding: 6px 8px; text-align: left; vertical-align: top; }}
+    th {{ background-color: #f5f5f5; font-weight: 700; }}
+    blockquote {{ margin: 6px 0; padding: 6px 10px; border-left: 3px solid #888; background: #fafafa; }}
+    .agenda-image-wrap {{ margin: 10px 0 14px; border: 1px solid #d4d4d4; background: #fafafa; border-radius: 8px; overflow: hidden; }}
+    .agenda-image-wrap img {{ width: 100%; height: auto; display: block; background: #111; }}
+    .agenda-image-caption {{ font-size: 0.86em; color: #333; padding: 7px 10px; border-top: 1px solid #ddd; }}
+    .agenda-image-link {{ font-size: 0.84em; color: #1a1a1a; padding: 0 10px 9px; }}
+    .agenda-image-link .ts {{ margin-left: 8px; color: #666; font-family: monospace; }}
+    .before-after-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px; background: #f3f3f3; }}
+    .before-after-grid > div {{ position: relative; }}
+    .ba-tag {{ position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,.65); color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; }}
+    .footer {{ text-align: center; color: #333; font-size: 0.85em; margin-top: 28px; border-top: 1px solid #aaa; padding-top: 10px; }}
+    @media print {{
+      body {{ padding: 12mm; }}
+      .agenda-image-wrap, table, blockquote {{ break-inside: avoid; }}
+    }}
+  </style>
+</head>
+<body>
+  <div class="header-box">
+    <div>{escape(str(meta.get("title", "รายงานการประชุมประจำเดือน") or "รายงานการประชุมประจำเดือน"))}</div><br>
+    <div>{escape(str(meta.get("company", "บริษัทแสงฟ้าก่อสร้าง จำกัด") or "บริษัทแสงฟ้าก่อสร้าง จำกัด"))}</div><br>
+    <div>{escape(str(meta.get("date", "") or ""))} {escape(str(meta.get("time_range", "") or ""))}</div><br>
+    <div>{escape(str(meta.get("platform", "ZOOM") or "ZOOM"))}</div>
+  </div>
+
+  <div class="attendees-box">
+    <div class="attendees-header">รายชื่อผู้เข้าประชุม</div>
+    {attendee_items(attendees_main)}
+    <div class="attendees-header">รายชื่อผู้เข้าประชุมสมทบ</div>
+    {attendee_items(attendees_supp)}
+  </div>
+  <hr>
+
+  <h3>บทสรุปผู้บริหาร</h3>
+  {"".join(f"<p>{escape(p)}</p>" for p in exec_summary)}
+
+  {"".join(topic_html)}
+
+  <h3>ตารางมติที่ประชุม</h3>
+  <table>
+    <tr><th>ลำดับ</th><th>วาระ</th><th>มติ</th><th>ผู้รับผิดชอบ</th></tr>
+    {decision_table_rows}
+  </table>
+
+  <h3>ตารางงานที่ต้องดำเนินการ</h3>
+  <table>
+    <tr><th>ลำดับ</th><th>วาระ</th><th>งาน</th><th>ผู้รับผิดชอบ</th><th>กำหนดเสร็จ</th></tr>
+    {action_table_rows}
+  </table>
+
+  {unmapped_html}
+
+  <div class="footer">เอกสารสรุปรายงานการประชุม (อัตโนมัติ)</div>
+</body>
+</html>"""
     return html

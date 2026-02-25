@@ -28,6 +28,7 @@ class PipelineConfig:
     summarize_mode: str
     include_ocr: bool
     image_insert_enabled: bool
+    report_layout_mode: str
     image_base_dir: str
     image_embed_mode: str
     image_max_per_topic: int

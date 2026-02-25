@@ -38,6 +38,7 @@ cp .env.example .env
 ```bash
 python orchestrator.py
 python orchestrator.py --mode agenda
+python orchestrator.py --report-layout react_official --output ./output/meeting_report_official.html
 python orchestrator.py --mode auto --output ./output/report_auto.html --save-artifacts false
 python orchestrator.py --resume-artifact-dir ./output/artifacts/run_20260224_104605
 ```
@@ -55,6 +56,7 @@ python orchestrator.py --resume-artifact-dir ./output/artifacts/run_20260224_104
 - `AGENT2_CHUNK_SIZE` (default `160`)
 - `AGENT25_CHUNK_SIZE` (default `12`)
 - `PIPELINE_MAX_CONCURRENCY` (default `1`, ตั้ง `2` เพื่อยิง LLM พร้อมกัน 2 งาน)
+- `REPORT_LAYOUT_MODE` (`current` | `react_official`, default `current`)
 
 ## Output
 
