@@ -69,6 +69,7 @@ class WorkflowState(TypedDict, total=False):
     segments: list[dict[str, Any]]
     captures: list[dict[str, Any]]
     resume_cleaned: dict[str, Any]
+    resume_kg: dict[str, Any]
     cleaned: dict[str, Any]
     kg: dict[str, Any]
     topics: list[dict[str, Any]]
@@ -908,14 +909,18 @@ class MeetingWorkflow:
 
         captures = ocr_data.get("captures", []) if isinstance(ocr_data.get("captures"), list) else []
         resume_cleaned: dict[str, Any] = {}
+        resume_kg: dict[str, Any] = {}
         if self.cfg.resume_artifact_dir:
             resume_dir = Path(self.cfg.resume_artifact_dir).expanduser()
             resume_cleaned_path = resume_dir / "agent1_cleaned.json"
+            resume_kg_path = resume_dir / "agent2_kg.json"
             if not resume_cleaned_path.exists():
                 raise PipelineError(
                     f"--resume-artifact-dir set but missing file: {resume_cleaned_path}"
                 )
             resume_cleaned = load_json(resume_cleaned_path)
+            if resume_kg_path.exists():
+                resume_kg = load_json(resume_kg_path)
 
         run_meta: dict[str, Any] = {
             "run_id": run_id,
@@ -971,6 +976,15 @@ class MeetingWorkflow:
                 timeline=len(resume_cleaned.get("timeline", [])),
                 slides=len(resume_cleaned.get("slides", [])),
             )
+        if resume_kg:
+            topics = resume_kg.get("topics", []) if isinstance(resume_kg.get("topics"), list) else []
+            self._append_log(
+                run_meta,
+                str(artifact_dir),
+                "Resume KG detected",
+                source=self.cfg.resume_artifact_dir,
+                topics=len(topics),
+            )
 
         return {
             "run_id": run_id,
@@ -982,6 +996,7 @@ class MeetingWorkflow:
             "segments": segments,
             "captures": captures,
             "resume_cleaned": resume_cleaned,
+            "resume_kg": resume_kg,
         }
 
     def node_agent1(self, state: WorkflowState) -> WorkflowState:
@@ -1146,6 +1161,36 @@ class MeetingWorkflow:
         return {"cleaned": cleaned, "run_meta": run_meta}
 
     def node_agent2(self, state: WorkflowState) -> WorkflowState:
+        resume_kg = state.get("resume_kg", {})
+        if isinstance(resume_kg, dict) and isinstance(resume_kg.get("topics"), list):
+            topics = resume_kg.get("topics", [])
+            run_meta = dict(state["run_meta"])
+            artifact_dir = state.get("artifact_dir")
+            if topics:
+                topic_texts = [build_topic_text(t) for t in topics if isinstance(t, dict)]
+                topic_vecs = self.llm.embed(topic_texts) if topic_texts else []
+                for i, topic in enumerate(topics):
+                    if isinstance(topic, dict):
+                        topic["_vec"] = topic_vecs[i] if i < len(topic_vecs) else []
+                kg = resume_kg
+                self._append_log(
+                    run_meta,
+                    artifact_dir,
+                    "Agent2 skipped",
+                    reason="resume_artifact",
+                    source=self.cfg.resume_artifact_dir,
+                    topics=len(topics),
+                )
+                self._save_json_if_enabled(state, "agent2_kg.json", sanitize_kg_for_output(kg))
+                return {"kg": kg, "topics": topics, "run_meta": run_meta}
+            self._append_log(
+                run_meta,
+                artifact_dir,
+                "Resume KG ignored",
+                reason="no_topics",
+                source=self.cfg.resume_artifact_dir,
+            )
+
         cleaned = state["cleaned"]
         timeline = cleaned.get("timeline", [])
         if not isinstance(timeline, list) or not timeline:
@@ -1778,18 +1823,23 @@ class MeetingWorkflow:
             ts = out.get("topic_summary", {})
             if not isinstance(ts, dict):
                 ts = {}
-            ts.setdefault("topic_id", topic_item.get("topic_id", f"T{idx:03d}"))
-            ts.setdefault("agenda_number", topic_item.get("agenda_number", str(idx)))
-            ts.setdefault("title", topic_item.get("title", ""))
-            ts.setdefault("department", topic_item.get("department", ""))
-            ts.setdefault("presenter", topic_item.get("key_speaker", ""))
-            ts.setdefault("time_range", f"{job['start_hms']} – {job['end_hms']}")
-            ts.setdefault("status", topic_item.get("status", "discussed"))
-            ts.setdefault("summary_th", "")
-            ts.setdefault("key_data_points", [])
-            ts.setdefault("decisions", [])
-            ts.setdefault("action_items", [])
-            ts.setdefault("slide_count", len(job["slides_snip"]))
+            # Keep structural fields aligned with agenda/topic mapping, regardless of LLM drift.
+            ts["topic_id"] = topic_item.get("topic_id", f"T{idx:03d}")
+            ts["agenda_number"] = topic_item.get("agenda_number", str(idx))
+            ts["title"] = topic_item.get("title", "")
+            ts["department"] = topic_item.get("department", "")
+            ts["presenter"] = topic_item.get("key_speaker", "")
+            ts["time_range"] = f"{job['start_hms']} – {job['end_hms']}"
+            ts["status"] = topic_item.get("status", "discussed")
+
+            summary_th = ts.get("summary_th", "")
+            ts["summary_th"] = summary_th if isinstance(summary_th, str) else str(summary_th or "")
+
+            for key in ["key_data_points", "decisions", "action_items"]:
+                if not isinstance(ts.get(key), list):
+                    ts[key] = []
+
+            ts["slide_count"] = len(job["slides_snip"])
             return idx, ts
 
         topic_summaries: list[dict[str, Any]] = []

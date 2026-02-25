@@ -43,6 +43,7 @@ python orchestrator.py --resume-artifact-dir ./output/artifacts/run_20260224_104
 ```
 
 `--resume-artifact-dir` จะโหลด `agent1_cleaned.json` จาก run เดิมและข้าม Agent1 เพื่อรันต่อที่ Agent2
+และถ้าโฟลเดอร์เดียวกันมี `agent2_kg.json` ด้วย ระบบจะข้าม Agent2 ต่ออัตโนมัติ
 
 ปรับ chunk size ได้จาก `.env`:
 - `AGENT1_CHUNK_SIZE` (default `120`)
