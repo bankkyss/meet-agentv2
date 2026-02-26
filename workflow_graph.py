@@ -11,9 +11,10 @@ from typing import Any, TypedDict
 from langgraph.graph import END, StateGraph
 
 from html_renderer import (
+    apply_react_official_theme,
     fallback_render_html,
-    fallback_render_html_react_official,
-    html_has_sections_in_order,
+    html_compliance_issues,
+    strip_markdown_fences,
 )
 from image_processor import (
     group_manifest_by_topic,
@@ -123,6 +124,215 @@ class MeetingWorkflow:
         if item_count <= 1:
             return 1
         return max(1, min(self.cfg.pipeline_max_concurrency, item_count))
+
+    def _agenda_sort_key(self, agenda_number: Any) -> tuple:
+        raw = str(agenda_number or "").strip()
+        if not raw:
+            return (999999,)
+        parts = []
+        for part in raw.split("."):
+            token = part.strip()
+            if token.isdigit():
+                parts.append(int(token))
+                continue
+            m = re.match(r"(\d+)", token)
+            if m:
+                parts.append(int(m.group(1)))
+            else:
+                parts.append(999999)
+        return tuple(parts)
+
+    def _is_container_agenda_item(
+        self,
+        item: dict[str, Any],
+        all_agenda_numbers: set[str],
+    ) -> bool:
+        num = str(item.get("agenda_number", "") or "").strip()
+        if not num:
+            return False
+        prefix = f"{num}."
+        has_child = any(n != num and n.startswith(prefix) for n in all_agenda_numbers)
+        if not has_child:
+            return False
+
+        title = re.sub(r"\s+", "", str(item.get("title", "") or ""))
+        dept = re.sub(r"\s+", "", str(item.get("department", "") or ""))
+
+        # Typical parent/container agendas are generic department headers.
+        if not title:
+            return True
+        if dept and title == dept:
+            return True
+        if title.startswith("ฝ่าย"):
+            return True
+        if len(title) <= 14 and ("ฝ่าย" in title or "โกดัง" in title):
+            return True
+        return False
+
+    def _sample_timeline_for_agent3b(
+        self,
+        timeline: list[dict[str, Any]],
+        max_items: int = 300,
+    ) -> list[dict[str, Any]]:
+        rows = [x for x in timeline if isinstance(x, dict)]
+        if len(rows) <= max_items:
+            return rows
+        n = len(rows)
+        idxs: list[int] = []
+        for i in range(max_items):
+            idx = int(round(i * (n - 1) / max(1, max_items - 1)))
+            if not idxs or idx != idxs[-1]:
+                idxs.append(idx)
+        return [rows[i] for i in idxs]
+
+    def _topic_coverage_ratio(
+        self,
+        extracted_topics: list[dict[str, Any]],
+        timeline: list[dict[str, Any]],
+    ) -> float:
+        if not extracted_topics or not timeline:
+            return 0.0
+        tl_secs = [
+            hms_to_sec(str(x.get("timestamp_hms", "00:00:00")))
+            for x in timeline
+            if isinstance(x, dict)
+        ]
+        if not tl_secs:
+            return 0.0
+        meeting_start = min(tl_secs)
+        meeting_end = max(tl_secs)
+        meeting_span = max(1, meeting_end - meeting_start)
+
+        starts: list[int] = []
+        ends: list[int] = []
+        for t in extracted_topics:
+            if not isinstance(t, dict):
+                continue
+            st = hms_to_sec(str(t.get("start_timestamp", "00:00:00")))
+            ed = hms_to_sec(str(t.get("end_timestamp", "00:00:00")))
+            if ed < st:
+                ed = st
+            starts.append(st)
+            ends.append(ed)
+        if not starts:
+            return 0.0
+        covered_span = max(1, max(ends) - min(starts))
+        return min(1.0, max(0.0, covered_span / meeting_span))
+
+    def _agent3b_fallback_from_kg(self, topics: list[dict[str, Any]]) -> dict[str, Any]:
+        rows: list[dict[str, Any]] = []
+        for t in topics:
+            if not isinstance(t, dict):
+                continue
+            topic_id = str(t.get("id", "") or "")
+            name = str(t.get("name", "") or "").strip()
+            if not topic_id or not name:
+                continue
+            st = hms_to_sec(str(t.get("start_timestamp", "00:00:00")))
+            ed = hms_to_sec(str(t.get("end_timestamp", "00:00:00")))
+            if ed < st:
+                ed = st
+            speakers = t.get("key_speakers", []) if isinstance(t.get("key_speakers"), list) else []
+            slides = t.get("slide_timestamps", []) if isinstance(t.get("slide_timestamps"), list) else []
+            decisions = t.get("decisions", []) if isinstance(t.get("decisions"), list) else []
+            actions = t.get("action_items", []) if isinstance(t.get("action_items"), list) else []
+            rows.append(
+                {
+                    "id": topic_id,
+                    "name": name,
+                    "department": str(t.get("department", "") or ""),
+                    "start_sec": st,
+                    "end_sec": ed,
+                    "key_speakers": [str(x) for x in speakers if str(x).strip()],
+                    "slide_timestamps": [str(x) for x in slides if str(x).strip()],
+                    "decisions_count": len(decisions),
+                    "actions_count": len(actions),
+                }
+            )
+        if not rows:
+            return {"extracted_topics": [], "topic_flow": "ไม่พบหัวข้อจากความรู้ที่สกัดได้"}
+
+        rows.sort(key=lambda x: (x["start_sec"], x["end_sec"]))
+        clusters: list[dict[str, Any]] = []
+        cur: dict[str, Any] | None = None
+        max_gap_sec = 180
+        max_cluster_items = 3
+        max_cluster_span_sec = 13 * 60
+
+        for r in rows:
+            if cur is None:
+                cur = {
+                    "start_sec": r["start_sec"],
+                    "end_sec": r["end_sec"],
+                    "items": [r],
+                }
+                continue
+            gap = r["start_sec"] - int(cur["end_sec"])
+            new_span = max(int(cur["end_sec"]), r["end_sec"]) - int(cur["start_sec"])
+            if gap <= max_gap_sec and len(cur["items"]) < max_cluster_items and new_span <= max_cluster_span_sec:
+                cur["items"].append(r)
+                cur["end_sec"] = max(int(cur["end_sec"]), r["end_sec"])
+            else:
+                clusters.append(cur)
+                cur = {
+                    "start_sec": r["start_sec"],
+                    "end_sec": r["end_sec"],
+                    "items": [r],
+                }
+        if cur is not None:
+            clusters.append(cur)
+
+        extracted: list[dict[str, Any]] = []
+        for idx, c in enumerate(clusters, start=1):
+            items = c["items"]
+            names = [str(x.get("name", "") or "").strip() for x in items if str(x.get("name", "") or "").strip()]
+            title = names[0] if names else f"หัวข้อการประชุมช่วงที่ {idx}"
+            subtitle = " / ".join(names[1:3]) if len(names) > 1 else ""
+            depts = [str(x.get("department", "") or "").strip() for x in items if str(x.get("department", "") or "").strip()]
+            dept = Counter(depts).most_common(1)[0][0] if depts else ""
+            spks: list[str] = []
+            slides: list[str] = []
+            decisions_count = 0
+            actions_count = 0
+            for x in items:
+                spks.extend(x.get("key_speakers", []))
+                slides.extend(x.get("slide_timestamps", []))
+                decisions_count += int(x.get("decisions_count", 0) or 0)
+                actions_count += int(x.get("actions_count", 0) or 0)
+            uniq_spks = list(dict.fromkeys([s for s in spks if s]))[:8]
+            uniq_slides = list(dict.fromkeys([s for s in slides if s]))[:8]
+            dur_min = round(max(0, int(c["end_sec"]) - int(c["start_sec"])) / 60.0, 2)
+            if "รายงาน" in title:
+                topic_type = "report"
+            elif "แจ้ง" in title or "ประกาศ" in title:
+                topic_type = "announcement"
+            elif decisions_count > 0:
+                topic_type = "decision"
+            else:
+                topic_type = "discussion"
+            importance = "high" if (dur_min >= 10 or decisions_count > 0 or actions_count > 0) else "medium"
+            extracted.append(
+                {
+                    "id": str(items[0].get("id", f"T{idx:03}")),
+                    "number": str(idx),
+                    "title": title,
+                    "subtitle": subtitle,
+                    "department": dept,
+                    "start_timestamp": sec_to_hms(int(c["start_sec"])),
+                    "end_timestamp": sec_to_hms(int(c["end_sec"])),
+                    "duration_minutes": dur_min,
+                    "topic_type": topic_type,
+                    "key_speakers": uniq_spks,
+                    "slide_timestamps": uniq_slides,
+                    "importance": importance,
+                }
+            )
+
+        topic_flow = (
+            f"สรุปอัตโนมัติจาก KG โดยจัดกลุ่มตามช่วงเวลา ได้ {len(extracted)} หัวข้อ "
+            f"ครอบคลุมตั้งแต่ {extracted[0]['start_timestamp']} ถึง {extracted[-1]['end_timestamp']}"
+        )
+        return {"extracted_topics": extracted, "topic_flow": topic_flow}
 
     def _remove_stutter(self, text: str) -> str:
         tokens = str(text or "").strip().split()
@@ -1376,19 +1586,92 @@ class MeetingWorkflow:
             topics=len(topics),
         )
 
+        import re
+        def extract_keywords(text: str) -> list[str]:
+            # Remove common generic stop words
+            stopwords = ["สรุป", "รายงาน", "ความเสียหาย", "สูญหาย", "ของ", "ประจำ", "เดือน", "ปี", "ทรัพย์สิน", "และ"]
+            words = re.findall(r'[a-zA-Z]+|[\u0E00-\u0E7F]+', text)
+            return [w for w in words if len(w) > 2 and w not in stopwords]
+
+        def find_transcript_hints(line: str, timeline: list) -> list[str]:
+            if not timeline:
+                return []
+            high_signal = ["บางไทร", "โกดัง", "protection", "โปรดิกชั่น", "โปรเทคชั่น", "defect", "ดีเฟค", "ห้องพัก", "ประมูล", "สูญหาย", "คนงาน", "ต่างด้าว"]
+            line_lower = line.lower()
+            active_signals = [w for w in high_signal if w in line_lower]
+            
+            stopwords = ["สรุป", "รายงาน", "ความเสียหาย", "ของ", "ประจำ", "เดือน", "ปี", "ทรัพย์สิน", "และ", "งาน", "ผล", "การ", "ติดตาม", "แจ้ง", "เรื่อง", "ที่", "ใน", "ให้"]
+            words = re.findall(r'[a-zA-Z]+|[\u0E00-\u0E7F]+', line_lower)
+            generic_keywords = [w for w in words if len(w) > 3 and w not in stopwords]
+
+            found_secs = []
+            for item in timeline:
+                text = str(item.get("text", "")).lower()
+                sec = float(item.get("timestamp_sec", 0))
+                if active_signals and any(sig in text for sig in active_signals):
+                    found_secs.append(sec)
+                elif len(generic_keywords) >= 2:
+                    if sum(1 for kw in generic_keywords if kw in text) >= 2:
+                        found_secs.append(sec)
+            
+            if not found_secs:
+                return []
+                
+            found_secs.sort()
+            clusters = []
+            curr_cluster = [found_secs[0]]
+            for s in found_secs[1:]:
+                if s - curr_cluster[-1] <= 300: # 5 minutes gap max
+                    curr_cluster.append(s)
+                else:
+                    clusters.append(curr_cluster)
+                    curr_cluster = [s]
+            clusters.append(curr_cluster)
+            
+            hint_ranges = []
+            for c in clusters:
+                start_hms = sec_to_hms(c[0])
+                end_hms = sec_to_hms(c[-1] + 180) # Add a 3 minute buffer to the last hit
+                if start_hms == end_hms:
+                    hint_ranges.append(start_hms)
+                else:
+                    hint_ranges.append(f"{start_hms} to {end_hms}")
+            return hint_ranges
+
+        timeline_data = state.get("cleaned", {}).get("timeline", [])
+
         for line, avec in zip(agenda_lines, agenda_vecs):
             scores = []
             for t in topics:
                 vec = t.get("_vec", [])
                 score = cosine(avec, vec) if isinstance(vec, list) else 0.0
-                scores.append((score, str(t.get("id", "")), str(t.get("name", ""))))
-            best = max(scores, key=lambda x: x[0]) if scores else (0.0, "", "")
+                scores.append((score, str(t.get("id", "")), str(t.get("name", "")), str(t.get("description", ""))))
+            
+            top3 = sorted(scores, key=lambda x: x[0], reverse=True)[:3]
+            
+            # --- Keyword & Transcript Matching ---
+            kw_matches = []
+            keywords = extract_keywords(line)
+            if keywords:
+                for t in topics:
+                    t_text = str(t.get("name", "")) + " " + str(t.get("description", ""))
+                    if any(kw.lower() in t_text.lower() for kw in keywords):
+                        kw_matches.append({"topic_id": t.get("id", ""), "topic_name": t.get("name", "")})
+            
+            transcript_times = find_transcript_hints(line, timeline_data)
+            
             semantic_hints.append(
                 {
                     "agenda_line": line,
-                    "best_topic": best[1],
-                    "topic_name": best[2],
-                    "score": round(best[0], 3),
+                    "extracted_keywords_to_look_for": keywords,
+                    "keyword_matches_found_in_kg": kw_matches[:3],
+                    "transcript_timestamps_where_discussed": transcript_times,
+                    "semantic_best_topic": top3[0][1] if top3 else "",
+                    "semantic_score": round(top3[0][0], 3) if top3 else 0.0,
+                    "semantic_alternatives": [
+                        {"topic_id": t[1], "topic_name": t[2], "score": round(t[0], 3)}
+                        for t in top3[1:]
+                    ],
                 }
             )
 
@@ -1414,6 +1697,85 @@ class MeetingWorkflow:
             discussed=topic_map.get("coverage_stats", {}).get("discussed", 0),
         )
 
+        # --- Post‑process: fix fabricated time_ranges using KG topic timestamps ---
+        # Agent3A frequently fabricates time_ranges that extend beyond the actual
+        # meeting duration, causing Agent4 to get empty timeline snippets.
+        # Replace with KG topic's real timestamps when available.
+        topic_time_lookup: dict[str, dict[str, str]] = {}
+        for t in topics:
+            if isinstance(t, dict):
+                tid = str(t.get("id", ""))
+                if tid:
+                    topic_time_lookup[tid] = {
+                        "start": str(t.get("start_timestamp", "00:00:00")),
+                        "end": str(t.get("end_timestamp", "00:00:00")),
+                    }
+
+        # Get actual meeting end time from timeline
+        timeline = state.get("cleaned", {}).get("timeline", [])
+        meeting_end_sec = 0
+        if timeline:
+            last_entry = timeline[-1] if isinstance(timeline[-1], dict) else {}
+            meeting_end_sec = int(float(last_entry.get("timestamp_sec", 0) or 0))
+
+        # Build lookup to check if agendas had explicit transcript timestamps
+        agenda_has_hints = {}
+        for hint in semantic_hints:
+            line = str(hint.get("agenda_line", ""))
+            agenda_has_hints[line] = len(hint.get("transcript_timestamps_where_discussed", [])) > 0
+
+        time_fixes = 0
+        for item in topic_map.get("agenda_mapping", []):
+            if not isinstance(item, dict):
+                continue
+            mapped = item.get("mapped_topics", [])
+            if not isinstance(mapped, list) or not mapped:
+                continue
+            tr = item.get("time_range", {})
+            if not isinstance(tr, dict):
+                continue
+            start_str = str(tr.get("start", "00:00:00"))
+            end_str = str(tr.get("end", "00:00:00"))
+            start_sec = hms_to_sec(start_str)
+            end_sec = hms_to_sec(end_str)
+
+            agenda_title = str(item.get("agenda_title", ""))
+            had_hint = False
+            for line, has_hint in agenda_has_hints.items():
+                if agenda_title in line or line in agenda_title:
+                    had_hint = has_hint
+                    break
+
+            # If the time_range is beyond the meeting end or doesn't overlap
+            # with the KG topic, replace it with the KG topic's timestamps.
+            topic_id = str(mapped[0])
+            kg_tr = topic_time_lookup.get(topic_id, {})
+            if kg_tr:
+                kg_start = hms_to_sec(kg_tr.get("start", "00:00:00"))
+                kg_end = hms_to_sec(kg_tr.get("end", "00:00:00"))
+                # Only fix if the time_range is completely fabricated beyond
+                # the physical end of the meeting. If it's within the meeting,
+                # trust the LLM's sequence logic over the KG topic ONLY IF it actually
+                # received a transcript hint. If no hint and 0% overlap, it's a hallucination.
+                needs_fix = (
+                    start_sec > meeting_end_sec
+                    or end_sec > meeting_end_sec + 300
+                )
+                if not had_hint and (end_sec <= kg_start or start_sec >= kg_end):
+                    needs_fix = True
+                if needs_fix:
+                    item["time_range"] = kg_tr
+                    item["_time_range_fixed"] = True
+                    time_fixes += 1
+        if time_fixes:
+            self._append_log(
+                run_meta,
+                artifact_dir,
+                "Agent3A time_range post-fix",
+                fixed=time_fixes,
+                total=len(topic_map.get("agenda_mapping", [])),
+            )
+
         self._save_json_if_enabled(state, "agent3_topic_map.json", topic_map)
         return {"topic_map": topic_map, "run_meta": run_meta}
 
@@ -1421,13 +1783,21 @@ class MeetingWorkflow:
         run_meta = dict(state["run_meta"])
         artifact_dir = state.get("artifact_dir")
         kg = state["kg"]
+        topics = state["topics"]
         timeline = state["cleaned"].get("timeline", [])
-        self._append_log(run_meta, artifact_dir, "Agent3B start", timeline_sample=min(len(timeline), 300))
+        timeline_sample = self._sample_timeline_for_agent3b(timeline, max_items=300)
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            "Agent3B start",
+            timeline_total=len(timeline),
+            timeline_sample=len(timeline_sample),
+        )
 
         user = fill_template(
             AGENT3B_USR,
             KG=json.dumps(sanitize_kg_for_output(kg), ensure_ascii=False),
-            TIMELINE=json.dumps(timeline[:300], ensure_ascii=False),
+            TIMELINE=json.dumps(timeline_sample, ensure_ascii=False),
         )
         topic_map = self.llm.call(
             AGENT3B_SYS,
@@ -1437,11 +1807,28 @@ class MeetingWorkflow:
             tag="agent3b",
         )
         assert isinstance(topic_map, dict)
+        extracted = topic_map.get("extracted_topics", [])
+        if not isinstance(extracted, list):
+            extracted = []
+        coverage = self._topic_coverage_ratio(extracted, timeline)
+        if len(extracted) < 8 or coverage < 0.6:
+            self._append_log(
+                run_meta,
+                artifact_dir,
+                "Agent3B fallback from KG",
+                reason="low_topic_count_or_coverage",
+                extracted=len(extracted),
+                coverage=f"{coverage:.2f}",
+            )
+            topic_map = self._agent3b_fallback_from_kg(topics)
+            extracted = topic_map.get("extracted_topics", []) if isinstance(topic_map.get("extracted_topics"), list) else []
+
         self._append_log(
             run_meta,
             artifact_dir,
             "Agent3B done",
-            extracted=len(topic_map.get("extracted_topics", [])),
+            extracted=len(extracted),
+            coverage=f"{self._topic_coverage_ratio(extracted, timeline):.2f}",
         )
 
         self._save_json_if_enabled(state, "agent3_topic_map.json", topic_map)
@@ -1718,6 +2105,67 @@ class MeetingWorkflow:
             "run_meta": run_meta,
         }
 
+    def _filter_kg_for_time_range(
+        self,
+        kg: dict[str, Any],
+        start_sec: int,
+        end_sec: int,
+        margin_sec: int = 60,
+    ) -> dict[str, Any]:
+        """Return a copy of *kg* containing only entities/topics within the time window.
+
+        This prevents Agent4 from seeing KG content unrelated to the
+        current agenda item when multiple agendas share the same topic_id.
+        """
+        import copy
+
+        lo = max(start_sec - margin_sec, 0)
+        hi = end_sec + margin_sec
+
+        def _ts_in_range(ts_raw: Any) -> bool:
+            """Check whether a timestamp value falls inside [lo, hi]."""
+            ts_str = str(ts_raw or "")
+            if ":" in ts_str:
+                ts_val = hms_to_sec(ts_str)
+            else:
+                try:
+                    ts_val = int(float(ts_str))
+                except (ValueError, TypeError):
+                    return True  # keep items without parseable timestamp
+            return lo <= ts_val <= hi
+
+        out = copy.deepcopy(kg)
+
+        # --- filter entities ---
+        entities = out.get("entities", {})
+        if isinstance(entities, dict):
+            for key in ("financials", "decisions", "action_items", "issues"):
+                items = entities.get(key, [])
+                if isinstance(items, list):
+                    entities[key] = [it for it in items if _ts_in_range(it.get("timestamp", ""))]
+            
+            # Remove high-volume global entities without timestamps
+            # to prevent context dilution/bleeding across distinct agendas.
+            for key in ("people", "projects", "equipment"):
+                if key in entities:
+                    del entities[key]
+
+        # --- filter topics ---
+        topics = out.get("topics", [])
+        if isinstance(topics, list):
+            filtered_topics = []
+            for t in topics:
+                if not isinstance(t, dict):
+                    continue
+                t_start = hms_to_sec(str(t.get("start_timestamp", "00:00:00")))
+                t_end = hms_to_sec(str(t.get("end_timestamp", "00:00:00")))
+                # keep topic if its time range overlaps with [lo, hi]
+                if t_end >= lo and t_start <= hi:
+                    filtered_topics.append(t)
+            out["topics"] = filtered_topics
+
+        return out
+
     def node_agent4(self, state: WorkflowState) -> WorkflowState:
         run_meta = dict(state["run_meta"])
         artifact_dir = state.get("artifact_dir")
@@ -1762,6 +2210,24 @@ class MeetingWorkflow:
                         "key_speaker": ", ".join(item.get("key_speakers", [])) if isinstance(item.get("key_speakers"), list) else "",
                     }
                 )
+        topic_items.sort(key=lambda x: self._agenda_sort_key(x.get("agenda_number", "")))
+        if "agenda_mapping" in topic_map:
+            agenda_numbers = {str(x.get("agenda_number", "") or "").strip() for x in topic_items}
+            container_numbers = [
+                str(x.get("agenda_number", "") or "").strip()
+                for x in topic_items
+                if self._is_container_agenda_item(x, agenda_numbers)
+            ]
+            if container_numbers:
+                skip_set = set(container_numbers)
+                topic_items = [x for x in topic_items if str(x.get("agenda_number", "") or "").strip() not in skip_set]
+                self._append_log(
+                    run_meta,
+                    artifact_dir,
+                    "Agent4 container agendas skipped",
+                    count=len(skip_set),
+                    agendas=",".join(sorted(skip_set, key=self._agenda_sort_key)),
+                )
         workers = self._effective_workers(len(topic_items))
         self._append_log(
             run_meta,
@@ -1796,6 +2262,8 @@ class MeetingWorkflow:
                 timeline=len(tl_snip),
                 slides=len(slides_snip),
             )
+            # Filter KG to only include entities/topics relevant to this time range.
+            filtered_kg = self._filter_kg_for_time_range(kg, start_sec, end_sec)
             topic_jobs.append(
                 {
                     "idx": idx,
@@ -1804,6 +2272,7 @@ class MeetingWorkflow:
                     "end_hms": end_hms,
                     "slides_snip": slides_snip,
                     "tl_snip": tl_snip,
+                    "filtered_kg": filtered_kg,
                 }
             )
 
@@ -1812,7 +2281,7 @@ class MeetingWorkflow:
             topic_item = job["topic_item"]
             user = fill_template(
                 AGENT4_TOPIC_USR,
-                KG=json.dumps(sanitize_kg_for_output(kg), ensure_ascii=False),
+                KG=json.dumps(sanitize_kg_for_output(job["filtered_kg"]), ensure_ascii=False),
                 TOPIC_ITEM=json.dumps(topic_item, ensure_ascii=False),
                 TIMELINE_SNIPPET=json.dumps(job["tl_snip"], ensure_ascii=False),
                 SLIDES=json.dumps(job["slides_snip"], ensure_ascii=False),
@@ -1969,29 +2438,37 @@ class MeetingWorkflow:
         )
 
         safe_kg = sanitize_kg_for_output(kg)
-        if self.cfg.report_layout_mode == "react_official":
-            html = fallback_render_html_react_official(
-                cleaned.get("meeting_meta", {}),
-                summaries,
-                safe_kg,
-                image_by_topic,
+        agent5_user = fill_template(
+            AGENT5_USR,
+            META=json.dumps(cleaned.get("meeting_meta", {}), ensure_ascii=False),
+            SUMMARIES=json.dumps(summaries, ensure_ascii=False),
+            KG=json.dumps(safe_kg, ensure_ascii=False),
+            IMAGE_BY_TOPIC=json.dumps(image_by_topic, ensure_ascii=False),
+            FULL_CSS_JS=HTML_CSS_JS_BUNDLE,
+        )
+
+        def render_fallback_html() -> tuple[str, str]:
+            return (
+                fallback_render_html(
+                    cleaned.get("meeting_meta", {}),
+                    summaries,
+                    safe_kg,
+                    image_by_topic,
+                ),
+                "fallback_current",
             )
+
+        html_source = "llm"
+        if self.llm.typhoon_llm is None:
             self._append_log(
                 run_meta,
                 artifact_dir,
-                "Agent5 official renderer done",
-                html_chars=len(html),
+                "Agent5 llm skipped",
+                reason="ollama_only_mode",
+                action="fallback_renderer",
             )
+            html, html_source = render_fallback_html()
         else:
-            agent5_user = fill_template(
-                AGENT5_USR,
-                META=json.dumps(cleaned.get("meeting_meta", {}), ensure_ascii=False),
-                SUMMARIES=json.dumps(summaries, ensure_ascii=False),
-                KG=json.dumps(safe_kg, ensure_ascii=False),
-                IMAGE_BY_TOPIC=json.dumps(image_by_topic, ensure_ascii=False),
-                FULL_CSS_JS=HTML_CSS_JS_BUNDLE,
-            )
-
             html = self.llm.call(
                 AGENT5_SYS,
                 agent5_user,
@@ -2001,10 +2478,37 @@ class MeetingWorkflow:
             )
             assert isinstance(html, str)
             self._append_log(run_meta, artifact_dir, "Agent5 llm done", html_chars=len(html))
+            self._save_html_if_enabled(state, "agent5_raw_llm.html", html)
 
-            if not html_has_sections_in_order(html):
-                self._append_log(run_meta, artifact_dir, "Agent5 compliance failed", action="fallback_renderer")
-                html = fallback_render_html(cleaned.get("meeting_meta", {}), summaries, safe_kg, image_by_topic)
+            normalized_html = strip_markdown_fences(html)
+            if normalized_html != html:
+                self._append_log(run_meta, artifact_dir, "Agent5 html normalized", stripped_markdown_fence=True)
+            html = normalized_html
+
+            compliance_issues = html_compliance_issues(
+                html,
+                expected_topic_sections=len(topic_rows),
+            )
+            if compliance_issues:
+                self._append_log(
+                    run_meta,
+                    artifact_dir,
+                    "Agent5 compliance failed",
+                    action="fallback_renderer",
+                    issues="; ".join(compliance_issues[:3]),
+                )
+                html, html_source = render_fallback_html()
+
+        if self.cfg.report_layout_mode == "react_official":
+            html = apply_react_official_theme(html)
+            self._append_log(
+                run_meta,
+                artifact_dir,
+                "Agent5 theme applied",
+                theme="react_official",
+                mode="override",
+                html_chars=len(html),
+            )
 
         Path(self.cfg.output_html_path).write_text(html, encoding="utf-8")
         self._save_html_if_enabled(state, "agent5_report.html", html)

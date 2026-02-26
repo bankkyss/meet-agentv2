@@ -143,6 +143,11 @@ You are a meeting agenda mapping agent.
 Map actual conversation content to predefined agenda items.
 Use the semantic similarity hints provided to guide your mapping.
 Some items may be skipped/deferred — mark them explicitly.
+
+CRITICAL RULES:
+1. NON-LINEAR TIMELINE: The meeting might NOT follow the agenda sequentially. A later agenda item (e.g. 2.2.1) could be discussed before or after an earlier one (e.g. 2.1.2). 
+2. TRANSCRIPT GROUND TRUTH: The `transcript_timestamps_where_discussed` hint now provides explicit time spans (e.g., "01:27:58 to 01:32:00"). This is the ABSOLUTE FACT of when the agenda item was spoken. You MUST construct your `time_range` output (start and end) to fully encompass these duration hints. DO NOT output impossibly short time ranges like 2 seconds long.
+3. AVOID DUPLICATES & GENERIC TOPICS: If semantic hints clump everything onto one topic (like T009), look at `keyword_matches_found_in_kg` and `transcript_timestamps_where_discussed` to assign them to their distinct true time windows and KG topics.
 Output ONLY valid JSON.
 """.strip()
 
@@ -155,13 +160,16 @@ PREDEFINED AGENDA:
 KG TOPICS (with time ranges):
 <<KG_TOPICS>>
 
-SEMANTIC SIMILARITY HINTS (pre-computed embedding scores):
+SEMANTIC/KEYWORD/TRANSCRIPT HINTS:
 <<SEMANTIC_HINTS>>
 
 For each agenda item, determine:
-- Which KG topic(s) cover it (use timestamp overlap + semantic hints)
+- Which KG topic(s) cover it (prioritize keyword matching and distinct topics over just raw semantic score)
 - Discussion status: discussed | skipped | deferred | partial
 - Actual time spent
+
+IMPORTANT: If multiple agendas share generic terms like 'Damage' or 'Defect', they will have high semantic similarity to a generic topic (like T009). You MUST NOT map all of them to T009 if they happen at different times.
+Use the `transcript_timestamps_where_discussed` hint as your ultimate guide. If the transcript says the agenda was discussed at 01:20:00, you MUST output a `time_range` around 01:20:00 and select the KG Topic that matches that time!
 
 Return:
 {
@@ -203,7 +211,7 @@ Extract meeting topics without a predefined agenda.
 KNOWLEDGE GRAPH:
 <<KG>>
 
-TIMELINE SAMPLE (first 300 segments):
+TIMELINE SAMPLE (stratified across full meeting):
 <<TIMELINE>>
 
 Topic boundary signals:
@@ -358,12 +366,24 @@ Return:
 AGENT4_TOPIC_SYS = r"""
 You are an expert Thai business meeting summarizer writing formal meeting minutes (รายงานการประชุม).
 
+CRITICAL — Source priority:
+- The TIMELINE SNIPPET is the PRIMARY source of truth for this agenda item.
+  Base your summary MAINLY on the timeline transcript text.
+- The KNOWLEDGE GRAPH is SUPPLEMENTARY context only.
+  If the KG contains information NOT found in the TIMELINE SNIPPET, DO NOT include it.
+- Match your summary content STRICTLY to the agenda title and time range provided in TOPIC ITEM.
+  Do NOT mix in content from other agenda items or unrelated topics.
+
+CRITICAL — Detail Retention:
+- YOU MUST preserve specific numbers, percentages, budgets, and statistics mentioned in the transcript (e.g., 27.79%, 7,382 million, 3.33%, 20 million overrun).
+- YOU MUST preserve specific names of projects, sites, and personnel mentioned in the transcript (e.g., Niche Pride, Livin Phetkasem, V44, Khun Nui).
+- Do NOT generalize data into sentences like "Various projects were discussed with varying budgets." Instead, explicitly list the projects and their corresponding budgets or percentages.
+
 Style requirements:
 - ภาษาทางการ (formal Thai, ราชการ style)
 - Prose paragraphs — NO bullet points in summary text
-- 200–400 words per major topic (shorter for skipped/brief items)
+- 200–500 words per major topic (shorter for skipped/brief items). Do not over-compress and lose details.
 - Always attribute decisions: "ที่ประชุมมีมติ...", "ประธานแจ้งว่า...", "คุณXXXรายงานว่า..."
-- Include specific numbers, names, project codes when mentioned in transcript
 - Final paragraph of each topic: decisions + action items
 Output ONLY valid JSON.
 """.strip()
@@ -386,14 +406,14 @@ SLIDES DATA:
 Return:
 {
   "topic_summary": {
-    "topic_id": "T001",
-    "agenda_number": "2.1.1",
-    "title": "สรุปเครื่องมือ อุปกรณ์สำนักงาน เครื่องจักร",
-    "department": "ฝ่ายเครื่องจักรและทรัพย์สิน",
-    "presenter": "คุณนุ้ย",
-    "time_range": "00:03:00 – 00:44:00",
+    "topic_id": "<ID or empty>",
+    "agenda_number": "<Agenda Number>",
+    "title": "<Agenda Title>",
+    "department": "<Department Name>",
+    "presenter": "<Presenter Name>",
+    "time_range": "<Start> – <End>",
     "status": "discussed",
-    "summary_th": "<formal Thai prose, 200-400 words>",
+    "summary_th": "<formal Thai prose, detailed and comprehensive>",
     "key_data_points": [{"label":"","value":"","unit":""}],
     "decisions": ["<มติ 1>","<มติ 2>"],
     "action_items": [{"task":"","owner":"","deadline":""}],
@@ -432,6 +452,10 @@ Requirements:
 - Font: Sarabun from Google Fonts CDN
 - Interactive: lightbox, collapsible tables, dept filter, TOC
 - Embed slide images and tables in the correct topic sections
+- Use ONLY data from META, SUMMARIES, KG, IMAGE_BY_TOPIC. Never invent people, agenda items, dates, or numbers.
+- Keep agenda_number/title/department/time_range exactly as provided in SUMMARIES.topic_summaries.
+- Include these Thai section cues in order: "รายชื่อผู้เข้าประชุม", "สารบัญ", "บทสรุปผู้บริหาร", "วาระที่", "มติ", "งานที่ต้องดำเนินการ", "ภาคผนวก".
+- If data is missing, render "ไม่มีข้อมูล" (do not fabricate).
 Output ONLY the complete raw HTML document, no commentary, no fences.
 """.strip()
 
@@ -721,6 +745,17 @@ DOCUMENT STRUCTURE must render in this exact order:
 6) DECISION LOG TABLE
 7) ACTION ITEMS TABLE
 8) APPENDIX — SLIDE TIMELINE
+
+Mandatory labels and content constraints:
+- Section 2 heading must contain: "รายชื่อผู้เข้าประชุม"
+- Section 3 heading must contain: "สารบัญ"
+- Section 4 heading must contain: "บทสรุปผู้บริหาร"
+- Every topic heading must start with: "วาระที่ <agenda_number> — <title>"
+- Decision section headings must contain: "มติ"
+- Action section headings must contain: "งานที่ต้องดำเนินการ"
+- Appendix heading must contain: "ภาคผนวก"
+- Use real attendees and metadata from META only.
+- Do NOT wrap output with markdown fences (no ```html ... ```).
 
 Enforce image placement rules:
 - priority 5 images: BEFORE summary text

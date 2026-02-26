@@ -57,6 +57,8 @@ python orchestrator.py --resume-artifact-dir ./output/artifacts/run_20260224_104
 - `AGENT25_CHUNK_SIZE` (default `12`)
 - `PIPELINE_MAX_CONCURRENCY` (default `1`, ตั้ง `2` เพื่อยิง LLM พร้อมกัน 2 งาน)
 - `REPORT_LAYOUT_MODE` (`current` | `react_official`, default `current`)
+  - `current`: โครงรายงาน + CSS ปัจจุบัน
+  - `react_official`: โครงรายงานเหมือน `current` ทุกส่วน แต่ apply CSS theme แบบ official ทับตอนท้าย
 
 ## Output
 

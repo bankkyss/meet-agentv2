@@ -251,13 +251,12 @@ def timeline_snippet_by_range(
     timeline: list[dict[str, Any]],
     start_sec: int,
     end_sec: int,
-    margin_sec: int = 120,
-    max_items: int = 150,
+    margin_sec: int = 60,
 ) -> list[dict[str, Any]]:
     lo = max(start_sec - margin_sec, 0)
     hi = end_sec + margin_sec
     out = [t for t in timeline if lo <= float(t.get("timestamp_sec", 0) or 0) <= hi]
-    return out[:max_items]
+    return out
 
 
 def sanitize_kg_for_output(kg: dict[str, Any]) -> dict[str, Any]:

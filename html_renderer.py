@@ -2,37 +2,399 @@
 
 from __future__ import annotations
 
+import re
 from html import escape
 from typing import Any
 
+from pipeline_utils import hms_to_sec
 from prompts import HTML_CSS_JS_BUNDLE
 
 
-def html_has_sections_in_order(html: str) -> bool:
-    lower = html.lower()
-    required = ["<!doctype html", "<style>", "<script>", "id=\"lb-overlay\""]
-    if not all(r in lower for r in required):
+REACT_OFFICIAL_THEME_OVERRIDE = """
+<style id="react-official-theme">
+:root {
+  --navy: #1f2937 !important;
+  --orange: #9a6700 !important;
+  --gray: #374151 !important;
+  --light: #f6f3ed !important;
+  --border: #d6cec1 !important;
+}
+body {
+  background: transparent !important;
+  color: #111111 !important;
+}
+.page {
+  background: #ffffff !important;
+  border: 1px solid #d9d2c5 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  max-width: 980px !important;
+  padding: 36px 44px !important;
+}
+.cover {
+  background: linear-gradient(180deg, #f7f2e8 0%, #ece4d5 100%) !important;
+  color: #1f2937 !important;
+  box-shadow: none !important;
+  border: 1px solid #d6cec1 !important;
+}
+.cover h1, .cover h2 {
+  letter-spacing: 0.2px;
+}
+.section-title {
+  border-left: none !important;
+  background: #ffffff !important;
+  padding-left: 0 !important;
+}
+.topic-section {
+  border: 1px solid #d9d2c5 !important;
+  box-shadow: none !important;
+  border-radius: 6px !important;
+}
+.topic-header {
+  background: transparent !important;
+}
+.agenda-meta {
+  margin: 0 0 10px 0 !important;
+  color: #4b5563 !important;
+  font-size: 13px !important;
+}
+.agenda-group-header {
+  margin: 18px 0 8px !important;
+  padding: 0 0 4px 0 !important;
+  border-bottom: 1px solid #c9d0da !important;
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  color: #1f2937 !important;
+}
+.toc {
+  border: 1px solid #d9d2c5 !important;
+}
+.toc-toggle {
+  background: #ffffff !important;
+  border: 1px solid #d9d2c5 !important;
+}
+.header-box {
+  text-align: center !important;
+  margin-bottom: 14px !important;
+  padding-bottom: 10px !important;
+  border-bottom: 2px solid #1f2937 !important;
+}
+.header-box .line1 {
+  font-size: 28px !important;
+  font-weight: 700 !important;
+  color: #1f2937 !important;
+}
+.header-box .line2,
+.header-box .line3,
+.header-box .line4 {
+  color: #374151 !important;
+  font-size: 15px !important;
+}
+.exec-stats .stat-card {
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  border: 1px solid #d9d2c5 !important;
+}
+.decisions-box,
+.actions-box {
+  border-width: 1px !important;
+}
+.log-table th,
+.actions-table th,
+.attendees th {
+  background: #1f2937 !important;
+}
+.slide-figure {
+  box-shadow: none !important;
+  border: 1px solid #d9d2c5 !important;
+}
+.fig-timestamp {
+  background: #f2ede3 !important;
+  color: #374151 !important;
+}
+</style>
+""".strip()
+
+
+def apply_react_official_theme(html: str) -> str:
+    if not html:
+        return html
+    if 'id="react-official-theme"' in html:
+        return html
+    marker = "</head>"
+    if marker in html:
+        return html.replace(marker, f"{REACT_OFFICIAL_THEME_OVERRIDE}\n{marker}", 1)
+    return REACT_OFFICIAL_THEME_OVERRIDE + html
+
+
+def _filter_images_by_time_range(
+    images: list[dict[str, Any]],
+    time_range_str: str,
+    margin_sec: int = 45,
+) -> list[dict[str, Any]]:
+    """Keep only images whose timestamp falls within the given time range.
+
+    This prevents multiple agendas sharing the same topic_id from all
+    receiving identical image sets.
+    """
+    if not time_range_str:
+        return images
+    parts = [x.strip() for x in time_range_str.replace("–", "-").split("-")]
+    if len(parts) < 2:
+        return images
+    lo = max(hms_to_sec(parts[0]) - margin_sec, 0)
+    hi = hms_to_sec(parts[1]) + margin_sec
+    return [
+        img for img in images
+        if lo <= float(img.get("timestamp_sec", 0) or 0) <= hi
+    ]
+
+
+def _agenda_sort_key(agenda_number: Any) -> tuple:
+    raw = str(agenda_number or "").strip()
+    if not raw:
+        return (999999,)
+    parts = []
+    for part in raw.split("."):
+        token = part.strip()
+        if token.isdigit():
+            parts.append(int(token))
+            continue
+        m = re.match(r"(\d+)", token)
+        if m:
+            parts.append(int(m.group(1)))
+        else:
+            parts.append(999999)
+    return tuple(parts)
+
+
+def _agenda_parts(agenda_number: Any) -> list[str]:
+    raw = str(agenda_number or "").strip()
+    if not raw:
+        return []
+    return [p.strip() for p in raw.split(".") if p.strip()]
+
+
+def _agenda_depth(agenda_number: Any) -> int:
+    return len(_agenda_parts(agenda_number))
+
+
+def _agenda_prefixes(agenda_number: Any, include_self: bool = False) -> list[str]:
+    parts = _agenda_parts(agenda_number)
+    if not parts:
+        return []
+    upto = len(parts) if include_self else max(0, len(parts) - 1)
+    return [".".join(parts[:i]) for i in range(1, upto + 1)]
+
+
+def _is_generic_group_title(text: str) -> bool:
+    t = re.sub(r"\s+", "", str(text or ""))
+    if not t:
+        return True
+    return t in {"หัวข้อกลุ่ม", "หัวข้อ", "วาระ"} or t.startswith("วาระที่")
+
+
+def _build_group_title_map(
+    topic_summaries: list[dict[str, Any]],
+    explicit_title_map: dict[str, str],
+) -> dict[str, str]:
+    group_depts: dict[str, set[str]] = {}
+    group_titles: dict[str, list[str]] = {}
+    for t in topic_summaries:
+        if not isinstance(t, dict):
+            continue
+        ag = str(t.get("agenda_number", "") or "").strip()
+        if not ag:
+            continue
+        dept = str(t.get("department", "") or "").strip()
+        title = str(t.get("title", "") or "").strip()
+        for pref in _agenda_prefixes(ag, include_self=False):
+            if dept:
+                group_depts.setdefault(pref, set()).add(dept)
+            if title:
+                group_titles.setdefault(pref, []).append(title)
+
+    out: dict[str, str] = {}
+    all_prefixes = set(group_depts.keys()) | set(group_titles.keys()) | set(explicit_title_map.keys())
+    for pref in sorted(all_prefixes, key=_agenda_sort_key):
+        explicit = str(explicit_title_map.get(pref, "") or "").strip()
+        if explicit and not _is_generic_group_title(explicit):
+            out[pref] = explicit
+            continue
+
+        depts = sorted(group_depts.get(pref, set()))
+        if len(depts) == 1:
+            out[pref] = depts[0]
+            continue
+        if 1 < len(depts) <= 3:
+            out[pref] = " / ".join(depts)
+            continue
+        if len(depts) > 3:
+            out[pref] = f"หลายหน่วยงาน ({len(depts)} หน่วย)"
+            continue
+
+        titles = group_titles.get(pref, [])
+        if titles:
+            out[pref] = titles[0]
+    return out
+
+
+def _is_container_agenda_item(item: dict[str, Any], all_agenda_numbers: set[str]) -> bool:
+    num = str(item.get("agenda_number", "") or "").strip()
+    if not num:
+        return False
+    prefix = f"{num}."
+    has_child = any(n != num and n.startswith(prefix) for n in all_agenda_numbers)
+    if not has_child:
         return False
 
-    cues = [
-        "รายงานการประชุม",
-        "ผู้เข้าประชุม",
-        "สารบัญ",
-        "บทสรุปผู้บริหาร",
-        "วาระที่",
-        "มติ",
-        "งานที่ต้องดำเนินการ",
-        "ภาคผนวก",
+    title = re.sub(r"\s+", "", str(item.get("title", "") or ""))
+    dept = re.sub(r"\s+", "", str(item.get("department", "") or ""))
+
+    # Generic parent rows (e.g., department-only headings) should not be
+    # rendered as standalone sections when child agendas are present.
+    if not title:
+        return True
+    if dept and title == dept:
+        return True
+    if title.startswith("ฝ่าย"):
+        return True
+    if len(title) <= 14 and ("ฝ่าย" in title or "โกดัง" in title):
+        return True
+    return False
+
+
+def _time_range_bounds_sec(time_range_str: str) -> tuple[int, int] | None:
+    if not time_range_str:
+        return None
+    parts = [x.strip() for x in time_range_str.replace("–", "-").split("-")]
+    if len(parts) < 2:
+        return None
+    lo = hms_to_sec(parts[0])
+    hi = hms_to_sec(parts[1])
+    if hi < lo:
+        hi = lo
+    return lo, hi
+
+
+def _select_images_for_section(
+    remaining_images: list[dict[str, Any]],
+    topic_id: str,
+    time_range_str: str,
+    max_per_section: int = 3,
+    prefer_topic_id: bool = True,
+) -> list[dict[str, Any]]:
+    if not remaining_images:
+        return []
+    bounds = _time_range_bounds_sec(time_range_str)
+    if bounds is not None:
+        lo, hi = bounds
+        mid = (lo + hi) / 2.0
+    else:
+        lo, hi = (0, 10**9)
+        mid = 0.0
+
+    def in_range(item: dict[str, Any]) -> bool:
+        sec = float(item.get("timestamp_sec", 0) or 0)
+        return lo - 30 <= sec <= hi + 30
+
+    def score(item: dict[str, Any]) -> tuple:
+        sec = float(item.get("timestamp_sec", 0) or 0)
+        pr = -int(item.get("insertion_priority", 0) or 0)
+        dist = abs(sec - mid)
+        return (pr, dist, sec)
+
+    ranged = [img for img in remaining_images if in_range(img)]
+    if ranged:
+        def ranked(item: dict[str, Any]) -> tuple:
+            same_topic = (
+                0
+                if (
+                    prefer_topic_id
+                    and topic_id
+                    and str(item.get("topic_id", "") or "") == topic_id
+                )
+                else 1
+            )
+            base = score(item)
+            return (same_topic, *base)
+
+        ranged.sort(key=ranked)
+        return ranged[:max_per_section]
+
+    # Fallback: if no image falls inside the time window, choose the nearest
+    # remaining image by timestamp so that sections are not visually empty.
+    if bounds is None:
+        remaining_images.sort(key=score)
+        return remaining_images[:max_per_section]
+
+    nearest = sorted(
+        remaining_images,
+        key=lambda item: abs(float(item.get("timestamp_sec", 0) or 0) - mid),
+    )
+    if not nearest:
+        return []
+    nearest_dist = abs(float(nearest[0].get("timestamp_sec", 0) or 0) - mid)
+    # Borrow only when the nearest capture is still reasonably close.
+    if nearest_dist > 1800:
+        return []
+    return nearest[:1]
+
+
+def strip_markdown_fences(html: str) -> str:
+    """Normalize LLM output by removing optional markdown code fences."""
+    if not html:
+        return html
+    text = html.strip()
+    if not text.startswith("```"):
+        return html
+    text = re.sub(r"^\s*```[a-zA-Z0-9_-]*\s*\n?", "", text, count=1)
+    text = re.sub(r"\n?\s*```\s*$", "", text, count=1)
+    return text.strip()
+
+
+def html_compliance_issues(html: str, expected_topic_sections: int = 0) -> list[str]:
+    issues: list[str] = []
+    lower = html.lower()
+    required = ["<!doctype html", "<style>", "<script>", "id=\"lb-overlay\""]
+    for marker in required:
+        if marker not in lower:
+            issues.append(f"missing_marker:{marker}")
+
+    staged_cues: list[tuple[str, list[str]]] = [
+        ("cover", ["รายงานการประชุม"]),
+        ("attendees", ["ผู้เข้าประชุม", "ผู้เข้าร่วมประชุม"]),
+        ("toc", ["สารบัญ"]),
+        ("executive_summary", ["บทสรุปผู้บริหาร", "สาระสำคัญ"]),
+        ("topics", ["วาระที่", "หัวข้อการประชุม"]),
+        ("decisions", ["มติ", "การตัดสินใจ"]),
+        ("actions", ["งานที่ต้องดำเนินการ", "รายการการดำเนินการ"]),
+        ("appendix", ["ภาคผนวก"]),
     ]
     pos = -1
-    for cue in cues:
-        i = html.find(cue)
-        if i < 0:
-            return False
+    for stage, options in staged_cues:
+        indices = [html.find(opt) for opt in options if html.find(opt) >= 0]
+        if not indices:
+            issues.append(f"missing_stage:{stage}")
+            continue
+        i = min(indices)
         if i < pos:
-            return False
-        pos = i
-    return True
+            issues.append(f"out_of_order:{stage}")
+        pos = max(pos, i)
+
+    if expected_topic_sections > 0:
+        topic_section_count = lower.count('class="topic-section"') + lower.count("class='topic-section'")
+        min_required = max(1, int(expected_topic_sections * 0.4))
+        if topic_section_count < min_required:
+            issues.append(
+                f"topic_coverage:{topic_section_count}/{expected_topic_sections}(min:{min_required})"
+            )
+
+    return issues
+
+
+def html_has_sections_in_order(html: str, expected_topic_sections: int = 0) -> bool:
+    return not html_compliance_issues(html, expected_topic_sections=expected_topic_sections)
 
 
 def split_paragraphs(text: str) -> list[str]:
@@ -53,7 +415,7 @@ def split_paragraphs(text: str) -> list[str]:
     return buf
 
 
-def render_figure(item: dict[str, Any], fig_num: int) -> str:
+def render_figure(item: dict[str, Any], fig_num: int, table_num: int) -> str:
     render_as = str(item.get("render_as", "") or "")
     content_summary = escape(str(item.get("content_summary", "")))
     caption = escape(str(item.get("caption_th", "")))
@@ -66,7 +428,7 @@ def render_figure(item: dict[str, Any], fig_num: int) -> str:
             f'<button class="table-toggle">{content_summary}</button>'
             f'<div class="table-body-wrap"><div class="table-body">{table_html}</div></div>'
             '<figcaption>'
-            f'<span class="fig-num">ตารางที่ {fig_num}</span>'
+            f'<span class="fig-num">ตารางที่ {table_num}</span>'
             f'<span class="fig-caption">{caption}</span>'
             f'<span class="fig-timestamp">{ts}</span>'
             "</figcaption>"
@@ -96,7 +458,7 @@ def render_figure(item: dict[str, Any], fig_num: int) -> str:
         return (
             '<div class="doc-ref-card">'
             '<span class="doc-icon">📄</span>'
-            f"<div><strong>{content_summary}</strong><p>{caption}</p></div>"
+            f"<div><strong>รูปที่ {fig_num} — {content_summary}</strong><p>{caption}</p></div>"
             f'<span class="fig-timestamp">{ts}</span>'
             "</div>"
         )
@@ -118,18 +480,27 @@ def render_figure(item: dict[str, Any], fig_num: int) -> str:
     )
 
 
-def render_images_block(images: list[dict[str, Any]], start_num: int) -> tuple[str, int]:
+def render_images_block(
+    images: list[dict[str, Any]],
+    start_fig_num: int,
+    start_table_num: int,
+) -> tuple[str, int, int]:
     html_parts: list[str] = []
-    n = start_num
+    fig_n = start_fig_num
+    table_n = start_table_num
     for i, item in enumerate(images):
-        html_parts.append(render_figure(item, n))
-        n += 1
+        render_as = str(item.get("render_as", "") or "")
+        html_parts.append(render_figure(item, fig_n, table_n))
+        if render_as == "html_table":
+            table_n += 1
+        else:
+            fig_n += 1
         if i < len(images) - 1:
             cur = str(item.get("render_as", ""))
             nxt = str(images[i + 1].get("render_as", ""))
             if cur in {"photo_lightbox", "before_after"} and nxt in {"photo_lightbox", "before_after"}:
                 html_parts.append('<p class="summary-text">รายละเอียดประกอบเพิ่มเติมตามภาพถัดไป</p>')
-    return "\n".join(html_parts), n
+    return "\n".join(html_parts), fig_n, table_n
 
 
 def _collect_unmapped_images(
@@ -160,6 +531,45 @@ def fallback_render_html(
 ) -> str:
     attendees = meta.get("attendees", []) if isinstance(meta.get("attendees"), list) else []
     topic_summaries = summaries.get("topic_summaries", [])
+    if not isinstance(topic_summaries, list):
+        topic_summaries = []
+    topic_summaries = sorted(
+        topic_summaries,
+        key=lambda t: _agenda_sort_key(t.get("agenda_number", "")) if isinstance(t, dict) else (999999,),
+    )
+    agenda_title_map: dict[str, str] = {}
+    for t in topic_summaries:
+        if not isinstance(t, dict):
+            continue
+        ag = str(t.get("agenda_number", "") or "").strip()
+        title = str(t.get("title", "") or "").strip()
+        if ag and title and ag not in agenda_title_map:
+            agenda_title_map[ag] = title
+    agenda_numbers = {
+        str(t.get("agenda_number", "") or "").strip()
+        for t in topic_summaries
+        if isinstance(t, dict)
+    }
+    skip_set = {
+        str(t.get("agenda_number", "") or "").strip()
+        for t in topic_summaries
+        if isinstance(t, dict) and _is_container_agenda_item(t, agenda_numbers)
+    }
+    if skip_set:
+        topic_summaries = [
+            t
+            for t in topic_summaries
+            if isinstance(t, dict) and str(t.get("agenda_number", "") or "").strip() not in skip_set
+        ]
+    topic_id_counts: dict[str, int] = {}
+    for t in topic_summaries:
+        if not isinstance(t, dict):
+            continue
+        tid = str(t.get("topic_id", "") or "").strip()
+        if not tid:
+            continue
+        topic_id_counts[tid] = topic_id_counts.get(tid, 0) + 1
+    group_title_map = _build_group_title_map(topic_summaries, agenda_title_map)
     exec_summary = str(summaries.get("executive_summary_th", ""))
 
     departments = sorted(
@@ -195,13 +605,28 @@ def fallback_render_html(
                 action_rows.append((agenda_no, str(a), owner_default, "", agenda_no))
 
     toc_rows = []
+    seen_toc_groups: set[str] = set()
     for idx, t in enumerate(topic_summaries, start=1):
         ag = str(t.get("agenda_number", idx))
         title = escape(str(t.get("title", "")))
         dept = escape(str(t.get("department", "")))
         trange = escape(str(t.get("time_range", "")))
+        for pref in _agenda_prefixes(ag, include_self=False):
+            if pref in seen_toc_groups:
+                continue
+            seen_toc_groups.add(pref)
+            lvl = _agenda_depth(pref)
+            ptitle = escape(group_title_map.get(pref, "หัวข้อกลุ่ม"))
+            toc_rows.append(
+                '<div class="toc-item toc-group" '
+                f'style="padding-left:{max(0, (lvl - 1) * 16)}px; opacity:0.88; pointer-events:none;">'
+                f'<span class="toc-num">{escape(pref)}</span>'
+                f'<span class="toc-title">{ptitle}</span>'
+                "</div>"
+            )
+        depth = _agenda_depth(ag)
         toc_rows.append(
-            f'<a class="toc-item" href="#topic-{idx}">'
+            f'<a class="toc-item" href="#topic-{idx}" style="padding-left:{max(0, (depth - 1) * 16)}px;">'
             f'<span class="toc-num">{escape(ag)}</span>'
             f'<span class="toc-title">{title}</span>'
             f'<span class="badge badge-dept">{dept}</span>'
@@ -211,10 +636,17 @@ def fallback_render_html(
 
     topic_html: list[str] = []
     fig_counter = 1
-    mapped_topic_ids: set[str] = set()
+    table_counter = 1
+    
+    all_imgs_flat: list[dict[str, Any]] = []
+    for imgs_list in image_by_topic.values():
+        all_imgs_flat.extend(imgs_list)
+    rendered_image_urls: set[str] = set()
+    seen_section_groups: set[str] = set()
+
     for idx, t in enumerate(topic_summaries, start=1):
-        topic_id = str(t.get("topic_id", "") or f"T{idx:03d}")
-        mapped_topic_ids.add(topic_id)
+        agenda_number = str(t.get("agenda_number", idx) or idx)
+        topic_id = str(t.get("topic_id", "") or "")
         dept = str(t.get("department", "") or "")
         trange = str(t.get("time_range", "") or "")
         start_hms = "00:00:00"
@@ -223,20 +655,58 @@ def fallback_render_html(
             if parts:
                 start_hms = parts[0]
 
-        imgs = list(image_by_topic.get(topic_id, []))
+        remaining = [
+            img
+            for img in all_imgs_flat
+            if str(img.get("image_base64", "") or img.get("image_path", "") or "") not in rendered_image_urls
+        ]
+        imgs = _select_images_for_section(
+            remaining_images=remaining,
+            topic_id=topic_id,
+            time_range_str=trange,
+            max_per_section=3,
+            prefer_topic_id=bool(topic_id and topic_id_counts.get(topic_id, 0) == 1),
+        )
+        for img in imgs:
+            img_url = str(img.get("image_base64", "") or img.get("image_path", "") or "")
+            if img_url:
+                rendered_image_urls.add(img_url)
         p5 = [x for x in imgs if int(x.get("insertion_priority", 0) or 0) >= 5]
         p4 = [x for x in imgs if int(x.get("insertion_priority", 0) or 0) == 4]
         p3 = [x for x in imgs if int(x.get("insertion_priority", 0) or 0) == 3]
+        p_other = [x for x in imgs if int(x.get("insertion_priority", 0) or 0) < 3]
 
         paras = split_paragraphs(str(t.get("summary_th", "")))
         if not paras:
             paras = ["ไม่มีข้อมูลสรุป"]
 
-        before_text, fig_counter = render_images_block(p5, fig_counter)
-        after_p1, fig_counter = render_images_block(p4, fig_counter)
-        end_block, fig_counter = render_images_block(p3, fig_counter)
+        before_text, fig_counter, table_counter = render_images_block(
+            p5,
+            fig_counter,
+            table_counter,
+        )
+        after_p1, fig_counter, table_counter = render_images_block(
+            p4,
+            fig_counter,
+            table_counter,
+        )
+        end_block, fig_counter, table_counter = render_images_block(
+            p3,
+            fig_counter,
+            table_counter,
+        )
+        tail_block, fig_counter, table_counter = render_images_block(
+            p_other,
+            fig_counter,
+            table_counter,
+        )
 
         summary_chunks: list[str] = []
+        if not imgs:
+            summary_chunks.append(
+                '<p class="summary-text"><em>หมายเหตุ: ไม่พบภาพประกอบที่จับคู่ได้ในช่วงเวลาวาระนี้ '
+                '(ระบบหลีกเลี่ยงการยัดรูปต่างช่วงเพื่อไม่ให้เนื้อหาคลาดเคลื่อน)</em></p>'
+            )
         if before_text:
             summary_chunks.append(before_text)
 
@@ -247,6 +717,8 @@ def fallback_render_html(
             summary_chunks.append(f"<p>{escape(p)}</p>")
         if end_block:
             summary_chunks.append(end_block)
+        if tail_block:
+            summary_chunks.append(tail_block)
 
         decision_list = t.get("decisions", []) if isinstance(t.get("decisions"), list) else []
         decisions_html = "".join(f"<li>{escape(str(d))}</li>" for d in decision_list) or "<li>ไม่มีมติที่ต้องบันทึกเพิ่มเติม</li>"
@@ -267,14 +739,24 @@ def fallback_render_html(
         if not action_trs:
             action_trs.append("<tr><td>ไม่มีงานที่มอบหมายเพิ่มเติม</td><td>-</td><td>-</td></tr>")
 
+        for pref in _agenda_prefixes(agenda_number, include_self=False):
+            if pref in seen_section_groups:
+                continue
+            seen_section_groups.add(pref)
+            ptitle = group_title_map.get(pref, "").strip()
+            header_text = f"วาระ {pref}"
+            if ptitle:
+                header_text = f"{header_text} {escape(ptitle)}"
+            topic_html.append(
+                f'<h3 class="agenda-group-header">{header_text}</h3>'
+            )
+
         topic_html.append(
             f'<section id="topic-{idx}" class="topic-section" data-dept="{escape(dept)}" data-start="{escape(start_hms)}">'
             '<div class="topic-header">'
-            f'<h3 class="agenda-title">วาระที่ {escape(str(t.get("agenda_number", idx)))} — {escape(str(t.get("title", "")))}</h3>'
-            f'<span class="badge badge-dept">{escape(dept)}</span>'
-            f'<span class="badge badge-time">{escape(trange)}</span>'
-            f'<span class="badge badge-status-discussed">{escape(str(t.get("status", "")))}</span>'
+            f'<h3 class="agenda-title">วาระที่ {escape(agenda_number)} {escape(str(t.get("title", "")))}</h3>'
             "</div>"
+            f'<div class="agenda-meta">หน่วยงาน: {escape(dept)} | ช่วงเวลา: {escape(trange)}</div>'
             f'<div class="summary-text">{"".join(summary_chunks)}</div>'
             '<div class="decisions-box"><h4>มติที่ประชุม</h4><ol>'
             f"{decisions_html}</ol></div>"
@@ -284,18 +766,31 @@ def fallback_render_html(
             "</section>"
         )
 
-    unmatched_images = _collect_unmapped_images(image_by_topic, mapped_topic_ids)
-    unmatched_html = ""
+    unmatched_images = []
+    seen = set()
+    for item in all_imgs_flat:
+        img_url = str(item.get("image_base64", "") or item.get("image_path", "") or "")
+        if not img_url or img_url in rendered_image_urls or img_url in seen:
+            continue
+        seen.add(img_url)
+        unmatched_images.append(item)
+    unmatched_images.sort(key=lambda x: float(x.get("timestamp_sec", 0) or 0))
+    unmatched_html = '<h2 class="section-title">ภาคผนวก — ภาพประกอบที่ยังไม่จับคู่หัวข้อ</h2>'
     if unmatched_images:
-        unmapped_blocks, fig_counter = render_images_block(unmatched_images, fig_counter)
-        unmatched_html = (
-            '<h2 class="section-title">ภาคผนวก — ภาพประกอบที่ยังไม่จับคู่หัวข้อ</h2>'
+        unmapped_blocks, fig_counter, table_counter = render_images_block(
+            unmatched_images,
+            fig_counter,
+            table_counter,
+        )
+        unmatched_html += (
             '<div class="summary-text"><p>'
             f"ตรวจพบภาพจาก OCR เพิ่มเติม {len(unmatched_images)} รายการ "
             "แต่ไม่พบหัวข้อสรุปที่แมปตรงกันในรอบนี้ จึงแสดงรวมในภาคผนวก"
             "</p></div>"
             f'<div class="summary-text">{unmapped_blocks}</div>'
         )
+    else:
+        unmatched_html += '<div class="summary-text"><p>ไม่มีภาพประกอบเพิ่มเติมในภาคผนวก</p></div>'
 
     attendees_rows = []
     for i, a in enumerate(attendees, start=1):
@@ -343,17 +838,14 @@ def fallback_render_html(
 {HTML_CSS_JS_BUNDLE}
 </head>
 <body>
-<section class="cover">
-  <h1>{escape(str(meta.get('company', 'บริษัทแสงฟ้าก่อสร้าง จำกัด')))}</h1>
-  <h2>{escape(str(meta.get('title', 'รายงานการประชุมประจำเดือน')))}</h2>
-  <div class="cover-meta">
-    <div><strong>วันที่:</strong> {escape(str(meta.get('date', '')))}</div>
-    <div><strong>เวลา:</strong> {escape(str(meta.get('time_range', '')))}</div>
-    <div><strong>แพลตฟอร์ม:</strong> {escape(str(meta.get('platform', 'ZOOM')))}</div>
-    <div><strong>ประธาน:</strong> {escape(str(meta.get('chairperson', '')))}</div>
-  </div>
-</section>
 <main class="page">
+  <div class="header-box">
+    <div class="line1">{escape(str(meta.get('title', 'รายงานการประชุมประจำเดือน')))}</div><br>
+    <div class="line2">{escape(str(meta.get('company', 'บริษัทแสงฟ้าก่อสร้าง จำกัด')))}</div><br>
+    <div class="line3">วันที่ {escape(str(meta.get('date', '')))} เวลา {escape(str(meta.get('time_range', '')))}</div><br>
+    <div class="line4">ประชุมออนไลน์ด้วยโปรแกรม {escape(str(meta.get('platform', 'ZOOM')))}</div>
+  </div>
+
   <h2 class="section-title">รายชื่อผู้เข้าประชุม</h2>
   <table class="attendees">
     <thead><tr><th>ลำดับ</th><th>ชื่อ-สกุล</th><th>แผนก</th><th>ประเภท</th></tr></thead>
@@ -419,7 +911,7 @@ def _pick_image_src(item: dict[str, Any], preferred: str = "image_base64") -> st
     return ""
 
 
-def _render_official_media(item: dict[str, Any], fig_num: int) -> str:
+def _render_official_media(item: dict[str, Any], fig_num: int, table_num: int) -> str:
     render_as = str(item.get("render_as", "") or "")
     summary = escape(str(item.get("content_summary", "") or "ภาพประกอบ"))
     caption = escape(str(item.get("caption_th", "") or ""))
@@ -430,7 +922,7 @@ def _render_official_media(item: dict[str, Any], fig_num: int) -> str:
         if table_html:
             return (
                 '<div class="agenda-image-wrap">'
-                f'<div class="agenda-image-caption"><strong>ตารางที่ {fig_num}</strong> {summary}</div>'
+                f'<div class="agenda-image-caption"><strong>ตารางที่ {table_num}</strong> {summary}</div>'
                 f"{table_html}"
                 f'<div class="agenda-image-link">{caption} <span class="ts">{ts}</span></div>'
                 "</div>"
@@ -472,6 +964,26 @@ def fallback_render_html_react_official(
     topic_summaries = summaries.get("topic_summaries", [])
     if not isinstance(topic_summaries, list):
         topic_summaries = []
+    topic_summaries = sorted(
+        topic_summaries,
+        key=lambda t: _agenda_sort_key(t.get("agenda_number", "")) if isinstance(t, dict) else (999999,),
+    )
+    agenda_numbers = {
+        str(t.get("agenda_number", "") or "").strip()
+        for t in topic_summaries
+        if isinstance(t, dict)
+    }
+    skip_set = {
+        str(t.get("agenda_number", "") or "").strip()
+        for t in topic_summaries
+        if isinstance(t, dict) and _is_container_agenda_item(t, agenda_numbers)
+    }
+    if skip_set:
+        topic_summaries = [
+            t
+            for t in topic_summaries
+            if isinstance(t, dict) and str(t.get("agenda_number", "") or "").strip() not in skip_set
+        ]
 
     attendees_main = [a for a in attendees if isinstance(a, dict) and str(a.get("type", "main")) == "main"]
     attendees_supp = [a for a in attendees if isinstance(a, dict) and str(a.get("type", "main")) != "main"]
@@ -493,36 +1005,57 @@ def fallback_render_html_react_official(
     action_rows: list[tuple[str, str, str, str]] = []
     topic_html: list[str] = []
     figure_num = 1
-    mapped_topic_ids: set[str] = set()
+    table_num = 1
+    
+    all_imgs_flat: list[dict[str, Any]] = []
+    for imgs_list in image_by_topic.values():
+        all_imgs_flat.extend(imgs_list)
+    rendered_image_urls: set[str] = set()
 
     for idx, t in enumerate(topic_summaries, start=1):
         if not isinstance(t, dict):
             continue
         agenda_number = str(t.get("agenda_number", idx) or idx)
-        topic_id = str(t.get("topic_id", "") or f"T{idx:03d}")
-        mapped_topic_ids.add(topic_id)
+        topic_id = str(t.get("topic_id", "") or "")
         title = str(t.get("title", "") or "")
         department = str(t.get("department", "") or "")
         time_range = str(t.get("time_range", "") or "")
         presenter = str(t.get("presenter", "") or "")
 
-        imgs = list(image_by_topic.get(topic_id, []))
-        imgs.sort(
-            key=lambda x: (
-                -int(x.get("insertion_priority", 0) or 0),
-                float(x.get("timestamp_sec", 0) or 0),
-            )
+        remaining = [
+            img
+            for img in all_imgs_flat
+            if str(img.get("image_base64", "") or img.get("image_path", "") or "") not in rendered_image_urls
+        ]
+        imgs = _select_images_for_section(
+            remaining_images=remaining,
+            topic_id=topic_id,
+            time_range_str=time_range,
+            max_per_section=3,
         )
         media_blocks: list[str] = []
         for item in imgs:
-            block = _render_official_media(item, figure_num)
+            img_url = str(item.get("image_base64", "") or item.get("image_path", "") or "")
+            if not img_url or img_url in rendered_image_urls:
+                continue
+            block = _render_official_media(item, figure_num, table_num)
             if block:
+                rendered_image_urls.add(img_url)
                 media_blocks.append(block)
-                figure_num += 1
+                if str(item.get("render_as", "") or "") == "html_table":
+                    table_num += 1
+                else:
+                    figure_num += 1
 
         summary_blocks = "".join(f"<p>{escape(p)}</p>" for p in split_paragraphs(str(t.get("summary_th", "") or "")))
         if not summary_blocks:
             summary_blocks = "<p>ไม่มีข้อมูลสรุป</p>"
+        if not imgs:
+            summary_blocks = (
+                "<p><em>หมายเหตุ: ไม่พบภาพประกอบที่จับคู่ได้ในช่วงเวลาวาระนี้ "
+                "(ระบบหลีกเลี่ยงการยัดรูปต่างช่วงเพื่อไม่ให้เนื้อหาคลาดเคลื่อน)</em></p>"
+                + summary_blocks
+            )
 
         decisions = t.get("decisions", [])
         if not isinstance(decisions, list):
@@ -567,20 +1100,33 @@ def fallback_render_html_react_official(
             f"{''.join(action_trs)}</table></div>"
         )
 
-    unmapped_images = _collect_unmapped_images(image_by_topic, mapped_topic_ids)
+    unmapped_images = []
+    seen = set()
+    for item in all_imgs_flat:
+        img_url = str(item.get("image_base64", "") or item.get("image_path", "") or "")
+        if not img_url or img_url in rendered_image_urls or img_url in seen:
+            continue
+        seen.add(img_url)
+        unmapped_images.append(item)
+    unmapped_images.sort(key=lambda x: float(x.get("timestamp_sec", 0) or 0))
+
     unmapped_blocks: list[str] = []
     for item in unmapped_images:
-        block = _render_official_media(item, figure_num)
+        block = _render_official_media(item, figure_num, table_num)
         if block:
             unmapped_blocks.append(block)
-            figure_num += 1
-    unmapped_html = ""
+            if str(item.get("render_as", "") or "") == "html_table":
+                table_num += 1
+            else:
+                figure_num += 1
+    unmapped_html = "<h3>ภาคผนวก - ภาพประกอบที่ยังไม่จับคู่หัวข้อ</h3>"
     if unmapped_blocks:
-        unmapped_html = (
-            "<h3>ภาคผนวก - ภาพประกอบที่ยังไม่จับคู่หัวข้อ</h3>"
+        unmapped_html += (
             "<p>ภาพที่ตรวจพบจาก OCR แต่ไม่ตรงกับวาระที่ถูกสรุปในรอบนี้</p>"
             f"{''.join(unmapped_blocks)}"
         )
+    else:
+        unmapped_html += "<p>ไม่มีภาพประกอบเพิ่มเติมในภาคผนวก</p>"
 
     decision_table_rows = "".join(
         "<tr>"
