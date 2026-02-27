@@ -1,0 +1,13 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+output/artifacts
+output/api_jobs
+output/*.html
+
+.DS_Store

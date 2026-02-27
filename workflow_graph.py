@@ -334,6 +334,139 @@ class MeetingWorkflow:
         )
         return {"extracted_topics": extracted, "topic_flow": topic_flow}
 
+    def _coerce_time_to_hms(self, value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            sec = max(int(float(value)), 0)
+            return sec_to_hms(sec)
+        text = str(value).strip()
+        if not text:
+            return None
+        if ":" in text:
+            return sec_to_hms(hms_to_sec(text))
+        try:
+            sec = max(int(float(text)), 0)
+            return sec_to_hms(sec)
+        except Exception:
+            return None
+
+    def _extract_topic_ref_number(self, topic_ref: str) -> str:
+        text = str(topic_ref or "").strip()
+        if not text:
+            return ""
+        m = re.search(r"(\d+(?:\.\d+)*)", text)
+        return m.group(1) if m else ""
+
+    def _apply_topic_time_overrides(
+        self,
+        topic_map: dict[str, Any],
+        config_data: dict[str, Any],
+    ) -> int:
+        overrides = config_data.get("TOPIC_TIME_OVERRIDES", [])
+        if not isinstance(overrides, list) or not overrides:
+            return 0
+
+        applied = 0
+
+        def match_override(ref_text: str, ref_num: str, item_num: str, item_title: str) -> bool:
+            num = str(item_num or "").strip()
+            num_norm = self._extract_topic_ref_number(num) or num
+            title = str(item_title or "").strip().lower()
+            if ref_num and (num == ref_num or num_norm == ref_num):
+                return True
+            rt = ref_text.lower().strip()
+            if not rt:
+                return False
+            if rt == num.lower():
+                return True
+            if ref_num and num_norm == ref_num:
+                return True
+            if rt in title:
+                return True
+            return False
+
+        if "agenda_mapping" in topic_map and isinstance(topic_map.get("agenda_mapping"), list):
+            for ov in overrides:
+                if not isinstance(ov, dict):
+                    continue
+                ref = str(ov.get("topic", "") or ov.get("agenda", "") or ov.get("agenda_number", "")).strip()
+                start_hms = self._coerce_time_to_hms(ov.get("start_time"))
+                end_hms = self._coerce_time_to_hms(ov.get("end_time"))
+                if not ref or not start_hms or not end_hms:
+                    continue
+                start_sec = hms_to_sec(start_hms)
+                end_sec = hms_to_sec(end_hms)
+                if end_sec < start_sec:
+                    end_sec = start_sec
+                    end_hms = start_hms
+                ref_num = self._extract_topic_ref_number(ref)
+
+                for item in topic_map.get("agenda_mapping", []):
+                    if not isinstance(item, dict):
+                        continue
+                    if not match_override(
+                        ref_text=ref,
+                        ref_num=ref_num,
+                        item_num=str(
+                            item.get("agenda_number", "")
+                            or item.get("topic_ref", "")
+                            or item.get("number", "")
+                            or ""
+                        ),
+                        item_title=str(item.get("agenda_title", "") or item.get("title", "") or ""),
+                    ):
+                        continue
+                    item["time_range"] = {"start": start_hms, "end": end_hms}
+                    item["_time_range_overridden"] = True
+                    applied += 1
+                    break
+
+        if "extracted_topics" in topic_map and isinstance(topic_map.get("extracted_topics"), list):
+            for ov in overrides:
+                if not isinstance(ov, dict):
+                    continue
+                ref = str(ov.get("topic", "") or ov.get("agenda", "") or ov.get("agenda_number", "")).strip()
+                start_hms = self._coerce_time_to_hms(ov.get("start_time"))
+                end_hms = self._coerce_time_to_hms(ov.get("end_time"))
+                if not ref or not start_hms or not end_hms:
+                    continue
+                start_sec = hms_to_sec(start_hms)
+                end_sec = hms_to_sec(end_hms)
+                if end_sec < start_sec:
+                    end_sec = start_sec
+                    end_hms = start_hms
+                ref_num = self._extract_topic_ref_number(ref)
+
+                for item in topic_map.get("extracted_topics", []):
+                    if not isinstance(item, dict):
+                        continue
+                    if not match_override(
+                        ref_text=ref,
+                        ref_num=ref_num,
+                        item_num=str(
+                            item.get("number", "")
+                            or item.get("topic_ref", "")
+                            or item.get("agenda_number", "")
+                            or ""
+                        ),
+                        item_title=str(
+                            item.get("title", "")
+                            or item.get("topic_title", "")
+                            or item.get("agenda_title", "")
+                            or ""
+                        ),
+                    ):
+                        continue
+                    item["start_timestamp"] = start_hms
+                    item["end_timestamp"] = end_hms
+                    item["duration_minutes"] = round(max(0, end_sec - start_sec) / 60.0, 2)
+                    item["_time_range_overridden"] = True
+                    applied += 1
+                    break
+
+        return applied
+
     def _remove_stutter(self, text: str) -> str:
         tokens = str(text or "").strip().split()
         if not tokens:
@@ -1114,7 +1247,14 @@ class MeetingWorkflow:
             ensure_dir(artifact_dir)
 
         transcript = load_json(self.cfg.transcript_path)
-        config_data = load_json(self.cfg.config_path) if self.cfg.config_path else {}
+        raw_config = load_json(self.cfg.config_path) if self.cfg.config_path else {}
+        if isinstance(raw_config, dict):
+            config_data = raw_config
+        elif isinstance(raw_config, list):
+            # Allow a compact config file that is only the override list.
+            config_data = {"TOPIC_TIME_OVERRIDES": raw_config}
+        else:
+            config_data = {}
         ocr_data = load_json(self.cfg.ocr_path) if (self.cfg.include_ocr and self.cfg.ocr_path) else {"captures": []}
 
         segments = transcript.get("segments", [])
@@ -1776,12 +1916,22 @@ class MeetingWorkflow:
                 total=len(topic_map.get("agenda_mapping", [])),
             )
 
+        override_applied = self._apply_topic_time_overrides(topic_map, config_data)
+        if override_applied:
+            self._append_log(
+                run_meta,
+                artifact_dir,
+                "Agent3A topic_time_overrides applied",
+                count=override_applied,
+            )
+
         self._save_json_if_enabled(state, "agent3_topic_map.json", topic_map)
         return {"topic_map": topic_map, "run_meta": run_meta}
 
     def node_agent3b(self, state: WorkflowState) -> WorkflowState:
         run_meta = dict(state["run_meta"])
         artifact_dir = state.get("artifact_dir")
+        config_data = state.get("config_data", {})
         kg = state["kg"]
         topics = state["topics"]
         timeline = state["cleaned"].get("timeline", [])
@@ -1821,6 +1971,16 @@ class MeetingWorkflow:
                 coverage=f"{coverage:.2f}",
             )
             topic_map = self._agent3b_fallback_from_kg(topics)
+            extracted = topic_map.get("extracted_topics", []) if isinstance(topic_map.get("extracted_topics"), list) else []
+
+        override_applied = self._apply_topic_time_overrides(topic_map, config_data)
+        if override_applied:
+            self._append_log(
+                run_meta,
+                artifact_dir,
+                "Agent3B topic_time_overrides applied",
+                count=override_applied,
+            )
             extracted = topic_map.get("extracted_topics", []) if isinstance(topic_map.get("extracted_topics"), list) else []
 
         self._append_log(
@@ -2021,6 +2181,9 @@ class MeetingWorkflow:
 
         for item in manifest:
             capture_index = int(item.get("capture_index", 0) or 0)
+            render_as = str(item.get("render_as", "") or "")
+            special = str(item.get("special_pattern", "") or "")
+            is_before_after = special == "BEFORE_AFTER" or render_as == "before_after"
             if 1 <= capture_index <= len(cap_vecs):
                 cap_vec = cap_vecs[capture_index - 1]
                 best_score = -1.0
@@ -2048,22 +2211,26 @@ class MeetingWorkflow:
                     item["image_path"] = source_path
                     raw_path = source_path
 
+            if is_before_after and raw_path:
+                item["before_image_path"] = raw_path
+
             resolved = resolve_image_path(raw_path, self.cfg.image_base_dir, self.cfg.ocr_path)
             if resolved:
                 item["resolved_image_path"] = str(resolved)
                 resolved_image_paths += 1
 
-            render_as = str(item.get("render_as", "") or "")
-            special = str(item.get("special_pattern", "") or "")
             if self.cfg.image_embed_mode == "base64" and resolved and render_as in {"photo_lightbox", "before_after"}:
                 item["image_base64"] = image_to_base64_data_uri(resolved)
 
-            if special == "BEFORE_AFTER" or render_as == "before_after":
+            if is_before_after:
                 pair_index = int(item.get("pair_index", 0) or 0)
                 if pair_index > 0 and pair_index in capture_by_index:
                     pair_cap = capture_by_index[pair_index]
+                    pair_source_path = str(pair_cap.get("image_path", "") or "")
+                    if pair_source_path:
+                        item["after_image_path"] = pair_source_path
                     pair_resolved = resolve_image_path(
-                        str(pair_cap.get("image_path", "") or ""),
+                        pair_source_path,
                         self.cfg.image_base_dir,
                         self.cfg.ocr_path,
                     )

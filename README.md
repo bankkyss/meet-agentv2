@@ -60,6 +60,95 @@ python orchestrator.py --resume-artifact-dir ./output/artifacts/run_20260224_104
   - `current`: โครงรายงาน + CSS ปัจจุบัน
   - `react_official`: โครงรายงานเหมือน `current` ทุกส่วน แต่ apply CSS theme แบบ official ทับตอนท้าย
 
+## FastAPI Queue Service
+
+รัน API (คิวงานทีละ 1 งาน):
+
+```bash
+uvicorn api_server:app --host 0.0.0.0 --port 8000
+```
+
+ตัวแปร env ที่เพิ่มเพื่อ hardening API:
+- `API_CORS_ALLOW_ORIGINS` (default `*`, comma-separated)
+- `API_CORS_ALLOW_METHODS` (default `*`)
+- `API_CORS_ALLOW_HEADERS` (default `*`)
+- `API_CORS_ALLOW_CREDENTIALS` (default `false`)
+- `API_MAX_REQUEST_BODY_BYTES` (default `5242880`)
+- `API_MAX_SEGMENTS` (default `10000`)
+- `API_MAX_FULL_TEXT_CHARS` (default `1500000`)
+- `API_MAX_MEETING_INFO_CHARS` (default `200000`)
+- `API_MAX_AGENDA_TEXT_CHARS` (default `500000`)
+- `API_MAX_TOPIC_TIME_OVERRIDES` (default `2000`)
+- `API_MAX_CAPTURES` (default `30000`)
+- `API_WORKER_JOIN_TIMEOUT_SEC` (default `10`)
+- `API_PROCESS_TERMINATE_GRACE_SEC` (default `5`)
+- `API_LOG_LEVEL` (default `INFO`)
+- `API_JOBS_ROOT` (override path ของ `output/api_jobs`)
+
+### Run With Docker
+
+```bash
+docker build -t meet-sum-api:latest .
+docker run --rm -p 8000:8000 \
+  --env-file .env \
+  -v "$(pwd)/output:/app/output" \
+  -v "$(pwd)/data:/app/data" \
+  meet-sum-api:latest
+```
+
+### Submit Job
+
+`POST /jobs` รับข้อมูล:
+- `MEETING_INFO` (required)
+- `AGENDA_TEXT` (optional)
+- `TOPIC_TIME_OVERRIDES` (optional)
+- `segments` (required)
+- `full_text` (required)
+- `capture_ocr_results` (optional, รองรับรูปแบบ `captures[]` ที่ `image_path` เป็น presigned URL ได้)
+
+ตัวอย่าง:
+
+```bash
+curl -X POST http://127.0.0.1:8000/jobs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "MEETING_INFO":"รายชื่อผู้เข้าประชุม...",
+    "AGENDA_TEXT":"วาระที่ 1 ...",
+    "TOPIC_TIME_OVERRIDES":[{"topic":"วาระที่ 1","start_time":"00:00:00","end_time":"00:10:00"}],
+    "segments":[{"speaker":"A","start":0,"end":15,"text":"เริ่มประชุม"}],
+    "full_text":"เริ่มประชุม...",
+    "capture_ocr_results":{
+      "captures":[
+        {
+          "capture_index":1,
+          "timestamp_sec":0,
+          "timestamp_hms":"00:00:00",
+          "image_path":"https://...presigned...",
+          "ocr_text":"ข้อความ OCR"
+        }
+      ]
+    }
+  }'
+```
+
+### Check Status / Result
+
+- `GET /jobs/{job_id}` ดูสถานะ (`queued/running/succeeded/failed`)
+- `GET /jobs/{job_id}/logs` ดู log run
+- `GET /jobs/{job_id}/html` ดาวน์โหลดผล HTML
+- `GET /jobs/{job_id}/result` ดูสรุปสถานะพร้อม URL
+
+Output ของแต่ละ job จะอยู่ใน `output/api_jobs/<job_id>/`
+
+ยิงจากไฟล์จริงในโปรเจกต์ด้วยสคริปต์:
+
+```bash
+scripts/submit_job_from_files.sh \
+  ./data/config_2025-01-04_with_agenda.json \
+  ./data/transcript_2025-01-04.json \
+  ./data/video_change_ocr/run_20260213_163003/capture_ocr_results.json
+```
+
 ## Output
 
 - ไฟล์หลัก: `output/meeting_report.html`

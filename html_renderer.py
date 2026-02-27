@@ -25,11 +25,11 @@ body {
 }
 .page {
   background: #ffffff !important;
-  border: 1px solid #d9d2c5 !important;
+  border: none !important;
   box-shadow: none !important;
   border-radius: 0 !important;
   max-width: 980px !important;
-  padding: 36px 44px !important;
+  padding: 30px 30px !important;
 }
 .cover {
   background: linear-gradient(180deg, #f7f2e8 0%, #ece4d5 100%) !important;
@@ -46,7 +46,7 @@ body {
   padding-left: 0 !important;
 }
 .topic-section {
-  border: 1px solid #d9d2c5 !important;
+  border: none !important;
   box-shadow: none !important;
   border-radius: 6px !important;
 }
@@ -111,6 +111,34 @@ body {
 .fig-timestamp {
   background: #f2ede3 !important;
   color: #374151 !important;
+}
+@page {
+  size: A4;
+  margin: 10mm 12mm;
+}
+@media print {
+  html, body {
+    background: #ffffff !important;
+  }
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .page {
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+  .cover {
+    border: none !important;
+    box-shadow: none !important;
+  }
 }
 </style>
 """.strip()
@@ -436,8 +464,16 @@ def render_figure(item: dict[str, Any], fig_num: int, table_num: int) -> str:
         )
 
     if render_as == "before_after" or str(item.get("special_pattern", "")) == "BEFORE_AFTER":
-        before = str(item.get("before_base64", "") or item.get("image_base64", ""))
-        after = str(item.get("after_base64", "") or item.get("image_base64", ""))
+        before_raw = _pick_image_src(item, preferred="before_base64")
+        after_raw = _pick_image_src(item, preferred="after_base64")
+        if not before_raw:
+            before_raw = _pick_image_src(item)
+        if not after_raw:
+            after_raw = before_raw
+        if not before_raw:
+            return ""
+        before = escape(before_raw)
+        after = escape(after_raw)
         return (
             '<figure class="slide-figure before-after">'
             '<div class="before-after-container">'
@@ -463,9 +499,10 @@ def render_figure(item: dict[str, Any], fig_num: int, table_num: int) -> str:
             "</div>"
         )
 
-    img = str(item.get("image_base64", "") or "")
-    if not img:
-        img = escape(str(item.get("image_path", "") or ""))
+    img_raw = _pick_image_src(item)
+    if not img_raw:
+        return ""
+    img = escape(img_raw)
     return (
         '<figure class="slide-figure photo-lightbox">'
         '<div class="figure-content">'
@@ -702,11 +739,11 @@ def fallback_render_html(
         )
 
         summary_chunks: list[str] = []
-        if not imgs:
-            summary_chunks.append(
-                '<p class="summary-text"><em>หมายเหตุ: ไม่พบภาพประกอบที่จับคู่ได้ในช่วงเวลาวาระนี้ '
-                '(ระบบหลีกเลี่ยงการยัดรูปต่างช่วงเพื่อไม่ให้เนื้อหาคลาดเคลื่อน)</em></p>'
-            )
+        # if not imgs:
+        #     summary_chunks.append(
+        #         '<p class="summary-text"><em>หมายเหตุ: ไม่พบภาพประกอบที่จับคู่ได้ในช่วงเวลาวาระนี้ '
+        #         '(ระบบหลีกเลี่ยงการยัดรูปต่างช่วงเพื่อไม่ให้เนื้อหาคลาดเคลื่อน)</em></p>'
+        #     )
         if before_text:
             summary_chunks.append(before_text)
 
@@ -893,14 +930,18 @@ def fallback_render_html(
 
 
 def _pick_image_src(item: dict[str, Any], preferred: str = "image_base64") -> str:
-    candidates = []
+    candidates: list[str] = []
     if preferred:
         candidates.append(str(item.get(preferred, "") or ""))
+        if preferred.endswith("_base64"):
+            candidates.append(str(item.get(preferred.replace("_base64", "_image_path"), "") or ""))
     candidates.extend(
         [
             str(item.get("image_base64", "") or ""),
             str(item.get("before_base64", "") or ""),
             str(item.get("after_base64", "") or ""),
+            str(item.get("before_image_path", "") or ""),
+            str(item.get("after_image_path", "") or ""),
             str(item.get("resolved_image_path", "") or ""),
             str(item.get("image_path", "") or ""),
         ]
@@ -1173,8 +1214,18 @@ def fallback_render_html_react_official(
     .before-after-grid > div {{ position: relative; }}
     .ba-tag {{ position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,.65); color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; }}
     .footer {{ text-align: center; color: #333; font-size: 0.85em; margin-top: 28px; border-top: 1px solid #aaa; padding-top: 10px; }}
+    @page {{
+      size: A4;
+      margin: 10mm 12mm;
+    }}
     @media print {{
-      body {{ padding: 12mm; }}
+      body {{
+        max-width: none;
+        margin: 0;
+        padding: 0;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }}
       .agenda-image-wrap, table, blockquote {{ break-inside: avoid; }}
     }}
   </style>

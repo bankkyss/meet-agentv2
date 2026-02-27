@@ -603,10 +603,33 @@ figcaption { padding:10px 14px; background:#f8f9fa; border-top:1px solid var(--b
 .dept-filter-bar label { font-weight:600; color:var(--navy); font-size:13px; }
 .dept-filter-bar select { font-family:'Sarabun',sans-serif; padding:5px 10px;
   border:1px solid var(--border); border-radius:6px; font-size:13px; }
+@page {
+  size: A4;
+  margin: 10mm 12mm;
+}
 @media print {
-  body { background:white; }
-  .page { box-shadow:none; padding:0; margin:0; max-width:none; }
-  .cover { min-height:auto; page-break-after:always; }
+  html, body { background:white !important; }
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .page {
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+    background: white !important;
+  }
+  .cover {
+    min-height: auto;
+    page-break-after: always;
+    box-shadow: none !important;
+    border: none !important;
+  }
   .topic-section { page-break-inside:avoid; }
   #lb-overlay, .print-btn, .dept-filter-bar { display:none !important; }
   .table-body-wrap { max-height:none !important; }
