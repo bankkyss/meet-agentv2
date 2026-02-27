@@ -58,6 +58,7 @@ python orchestrator.py --resume-artifact-dir ./output/artifacts/run_20260224_104
 - `AGENT1_SUBCHUNK_SIZE` (default `40`)
 - `AGENT1_OCR_MAX_CAPTURES` (default `3`, จำกัดจำนวน OCR ต่อ Agent1 chunk)
 - `AGENT1_OCR_SNIPPET_CHARS` (default `220`, ตัดข้อความ OCR ต่อรูป)
+- `OLLAMA_NUM_PREDICT` (default `4096`, เพดานจำนวน token ต่อคำตอบเมื่อใช้ Ollama chat)
 - `AGENT2_CHUNK_SIZE` (default `160`)
 - `AGENT25_CHUNK_SIZE` (default `12`)
 - `PIPELINE_MAX_CONCURRENCY` (default `1`, ตั้ง `2` เพื่อยิง LLM พร้อมกัน 2 งาน)

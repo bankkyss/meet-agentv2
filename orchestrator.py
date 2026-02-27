@@ -40,6 +40,7 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
             "OLLAMA_CHAT_MODEL",
             os.getenv("OLLAMA_MODEL", "scb10x/typhoon2.5-qwen3-30b-a3b:latest"),
         ).strip(),
+        ollama_num_predict=max(256, env_int("OLLAMA_NUM_PREDICT", 4096)),
         vllm_base_url=os.getenv("VLLM_BASE_URL", "http://localhost:8000").strip(),
         vllm_api_key=os.getenv("VLLM_API_KEY", "EMPTY").strip(),
         vllm_chat_model=os.getenv("VLLM_CHAT_MODEL", "Qwen/Qwen3.5-35B-A3B-FP8").strip(),

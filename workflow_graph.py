@@ -679,6 +679,11 @@ class MeetingWorkflow:
             tag=tag,
         )
         assert isinstance(out, dict)
+        has_text = any(str(seg.get("text", "") or "").strip() for seg in seg_chunk)
+        if has_text and not isinstance(out.get("timeline"), list):
+            raise PipelineError(f"{tag}: timeline is not a list")
+        if has_text and not out.get("timeline"):
+            raise PipelineError(f"{tag}: empty timeline from transcript chunk")
         return out
 
     def _agent1_call_llm_ocr_only(
@@ -724,6 +729,11 @@ class MeetingWorkflow:
             tag=tag,
         )
         assert isinstance(out, dict)
+        has_text = any(str(seg.get("text", "") or "").strip() for seg in seg_chunk)
+        if has_text and not isinstance(out.get("timeline"), list):
+            raise PipelineError(f"{tag}: timeline is not a list")
+        if has_text and not out.get("timeline"):
+            raise PipelineError(f"{tag}: empty timeline from transcript chunk")
         return out
 
     def _agent1_subchunk_recover(
@@ -1264,6 +1274,7 @@ class MeetingWorkflow:
         captures = ocr_data.get("captures", []) if isinstance(ocr_data.get("captures"), list) else []
         resume_cleaned: dict[str, Any] = {}
         resume_kg: dict[str, Any] = {}
+        resume_mismatch_note: dict[str, Any] | None = None
         if self.cfg.resume_artifact_dir:
             resume_dir = Path(self.cfg.resume_artifact_dir).expanduser()
             resume_cleaned_path = resume_dir / "agent1_cleaned.json"
@@ -1275,6 +1286,42 @@ class MeetingWorkflow:
             resume_cleaned = load_json(resume_cleaned_path)
             if resume_kg_path.exists():
                 resume_kg = load_json(resume_kg_path)
+
+            # Guard against stale resume artifacts that do not cover current input duration.
+            transcript_end_sec = 0.0
+            for seg in segments:
+                if not isinstance(seg, dict):
+                    continue
+                try:
+                    end_sec = float(seg.get("end", seg.get("start", 0)) or 0)
+                except Exception:
+                    end_sec = 0.0
+                if end_sec > transcript_end_sec:
+                    transcript_end_sec = end_sec
+
+            resume_timeline = resume_cleaned.get("timeline", []) if isinstance(resume_cleaned, dict) else []
+            resume_end_sec = 0.0
+            if isinstance(resume_timeline, list):
+                for row in resume_timeline:
+                    if not isinstance(row, dict):
+                        continue
+                    try:
+                        ts = float(row.get("timestamp_sec", 0) or 0)
+                    except Exception:
+                        ts = 0.0
+                    if ts > resume_end_sec:
+                        resume_end_sec = ts
+
+            if transcript_end_sec > 0 and resume_end_sec < (transcript_end_sec * 0.90):
+                resume_mismatch_note = {
+                    "source": str(resume_dir),
+                    "resume_end": sec_to_hms(resume_end_sec),
+                    "input_end": sec_to_hms(transcript_end_sec),
+                    "resume_timeline": len(resume_timeline) if isinstance(resume_timeline, list) else 0,
+                    "input_segments": len(segments),
+                }
+                resume_cleaned = {}
+                resume_kg = {}
 
         run_meta: dict[str, Any] = {
             "run_id": run_id,
@@ -1314,6 +1361,18 @@ class MeetingWorkflow:
             mode=self.cfg.summarize_mode,
             concurrency=self.cfg.pipeline_max_concurrency,
         )
+        if resume_mismatch_note:
+            self._append_log(
+                run_meta,
+                str(artifact_dir),
+                "Resume input ignored",
+                reason="timeline_coverage_mismatch",
+                source=resume_mismatch_note["source"],
+                resume_end=resume_mismatch_note["resume_end"],
+                input_end=resume_mismatch_note["input_end"],
+                resume_timeline=resume_mismatch_note["resume_timeline"],
+                input_segments=resume_mismatch_note["input_segments"],
+            )
         self._append_log(
             run_meta,
             str(artifact_dir),

@@ -152,6 +152,9 @@ class LLMClient:
         self.call_log: list[dict[str, Any]] = []
         self._fallback_notice_printed = False
         self._fallback_only_mode = False
+        self._ollama_sdk_client: Any | None = None
+        self._ollama_direct_mode = False
+        self._ollama_direct_mode_notice_printed = False
 
         if cfg.typhoon_api_key and cfg.typhoon_base_url:
             self.typhoon_llm = ChatOpenAI(
@@ -164,12 +167,19 @@ class LLMClient:
             )
 
         if cfg.chat_fallback_provider == "ollama":
-            self.ollama_chat_llm = ChatOllama(
-                model=cfg.ollama_chat_model,
-                base_url=cfg.ollama_base_url,
-                temperature=0.1,
-                num_predict=8192,
-            )
+            chat_kwargs: dict[str, Any] = {
+                "model": cfg.ollama_chat_model,
+                "base_url": cfg.ollama_base_url,
+                "temperature": 0.1,
+            }
+            # Pass timeout down to Ollama SDK client when supported.
+            try:
+                self.ollama_chat_llm = ChatOllama(
+                    **chat_kwargs,
+                    client_kwargs={"timeout": cfg.llm_timeout_sec},
+                )
+            except TypeError:
+                self.ollama_chat_llm = ChatOllama(**chat_kwargs)
         elif cfg.chat_fallback_provider == "vllm":
             self.vllm_chat_llm = ChatOpenAI(
                 model=cfg.vllm_chat_model,
@@ -257,22 +267,92 @@ class LLMClient:
         raise PipelineError(f"Typhoon token-limit handling exhausted: {last_exc}")
 
     def _invoke_ollama(self, system: str, user: str, json_mode: bool = False) -> str:
+        if self._ollama_direct_mode:
+            return self._invoke_ollama_via_sdk(system, user, json_mode=json_mode)
         if not self.ollama_chat_llm:
             raise PipelineError("Ollama chat model is not configured")
         model = self.ollama_chat_llm
+        invoke_options = {
+            "temperature": 0.1,
+            "num_predict": max(256, int(self.cfg.ollama_num_predict or 4096)),
+        }
+        try:
+            model = model.bind(options=invoke_options)
+        except Exception:
+            pass
         if json_mode:
             # Ask Ollama runtime to bias structured JSON output.
             model = model.bind(format="json")
 
-        resp = model.invoke(
-            [
-                SystemMessage(content=system),
-                HumanMessage(content=user),
-            ]
-        )
-        content = _message_to_text(resp)
+        try:
+            resp = model.invoke(
+                [
+                    SystemMessage(content=system),
+                    HumanMessage(content=user),
+                ]
+            )
+            content = _message_to_text(resp)
+            if not content:
+                raise PipelineError("Ollama returned empty response")
+            return content
+        except Exception as exc:
+            # Some langchain_ollama/ollama version combinations pass `num_predict`
+            # directly into Client.chat(), which is rejected by newer Ollama SDKs.
+            if "unexpected keyword argument 'num_predict'" in str(exc):
+                self._ollama_direct_mode = True
+                if not self._ollama_direct_mode_notice_printed:
+                    print("⚠️ Ollama adapter mismatch detected; switching to direct SDK calls.")
+                    self._ollama_direct_mode_notice_printed = True
+                return self._invoke_ollama_via_sdk(system, user, json_mode=json_mode)
+            raise
+
+    def _invoke_ollama_via_sdk(self, system: str, user: str, json_mode: bool = False) -> str:
+        if self._ollama_sdk_client is None:
+            try:
+                from ollama import Client as OllamaClient
+            except Exception as exc:
+                raise PipelineError(f"Ollama SDK is unavailable: {exc}") from exc
+            try:
+                self._ollama_sdk_client = OllamaClient(
+                    host=self.cfg.ollama_base_url,
+                    timeout=self.cfg.llm_timeout_sec,
+                )
+            except TypeError:
+                self._ollama_sdk_client = OllamaClient(host=self.cfg.ollama_base_url)
+
+        payload: dict[str, Any] = {
+            "model": self.cfg.ollama_chat_model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "stream": False,
+            "options": {
+                "temperature": 0.1,
+                "num_predict": max(256, int(self.cfg.ollama_num_predict or 4096)),
+            },
+        }
+        if json_mode:
+            payload["format"] = "json"
+
+        try:
+            resp = self._ollama_sdk_client.chat(**payload)
+        except Exception as exc:
+            raise PipelineError(f"Ollama SDK call failed: {exc}") from exc
+
+        content = ""
+        if isinstance(resp, dict):
+            message = resp.get("message") or {}
+            content = str(message.get("content") or "").strip()
+        else:
+            message = getattr(resp, "message", None)
+            if isinstance(message, dict):
+                content = str(message.get("content") or "").strip()
+            else:
+                content = str(getattr(message, "content", "") or "").strip()
+
         if not content:
-            raise PipelineError("Ollama returned empty response")
+            raise PipelineError("Ollama SDK returned empty response")
         return content
 
     def _invoke_vllm(self, system: str, user: str, json_mode: bool = False) -> str:
@@ -326,7 +406,10 @@ class LLMClient:
 
     def _repair_json(self, broken: str, required_keys: list[str], tag: str) -> dict[str, Any] | None:
         try:
-            return parse_json_or_raise(broken, f"{tag}/repair-heuristic")
+            parsed = parse_json_or_raise(broken, f"{tag}/repair-heuristic")
+            if required_keys:
+                validate_keys(parsed, required_keys, f"{tag}/repair-heuristic")
+            return parsed
         except Exception:
             pass
 
@@ -432,6 +515,8 @@ class LLMClient:
                     if json_mode and raw:
                         repaired = self._repair_json(raw, required, tag)
                         if repaired is not None:
+                            if required:
+                                validate_keys(repaired, required, tag)
                             return repaired
 
         raise PipelineError(f"{tag} failed after retries: {last_error}")

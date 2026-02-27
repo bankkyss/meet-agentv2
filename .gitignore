@@ -9,3 +9,7 @@ __pycache__/
 *.db   
 output/
 build/
+sep_ocr/
+meet-sum-api/
+meet-sum-frontend/
+test_data/
