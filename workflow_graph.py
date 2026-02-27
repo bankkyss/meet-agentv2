@@ -1286,6 +1286,8 @@ class MeetingWorkflow:
                 "report_layout_mode": self.cfg.report_layout_mode,
                 "image_embed_mode": self.cfg.image_embed_mode,
                 "allow_ollama_chat_fallback": self.cfg.allow_ollama_chat_fallback,
+                "chat_fallback_provider": self.cfg.chat_fallback_provider,
+                "embedding_provider": self.cfg.embedding_provider,
                 "agent1_chunk_size": self.cfg.agent1_chunk_size,
                 "agent1_chunk_overlap": self.cfg.agent1_chunk_overlap,
                 "agent1_subchunk_on_failure": self.cfg.agent1_subchunk_on_failure,

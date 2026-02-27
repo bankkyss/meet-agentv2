@@ -29,8 +29,13 @@ cp .env.example .env
 ```
 
 แก้ `.env` ให้ครบก่อนรัน โดยรองรับ 2 นโยบาย:
-- `Option A (default)`: `ALLOW_OLLAMA_CHAT_FALLBACK=false` → Typhoon-only สำหรับ chat
-- `Option B`: `ALLOW_OLLAMA_CHAT_FALLBACK=true` → ถ้า Typhoon ใช้ไม่ได้จะ fallback ไป `OLLAMA_CHAT_MODEL` พร้อม warning
+- `Option A (default)`: `ALLOW_CHAT_FALLBACK=false` → Typhoon-only สำหรับ chat
+- `Option B`: `ALLOW_CHAT_FALLBACK=true` → ถ้า Typhoon ใช้ไม่ได้จะ fallback ไป backend ที่กำหนดใน `CHAT_FALLBACK_PROVIDER` (`ollama` หรือ `vllm`)
+- ตั้ง provider เพิ่มเติม:
+  - `CHAT_FALLBACK_PROVIDER=ollama|vllm`
+  - `EMBEDDING_PROVIDER=ollama|vllm`
+  - ถ้าใช้ `vllm` ให้ตั้ง `VLLM_BASE_URL`, `VLLM_CHAT_MODEL`, `VLLM_EMBED_MODEL` ด้วย
+  - หมายเหตุ: บาง vLLM deployment ไม่เปิด `/v1/embeddings` ควรใช้ `EMBEDDING_PROVIDER=ollama`
 - token handling: ถ้า Typhoon ชน token limit ระบบจะลด `TYPHOON_MAX_TOKENS` อัตโนมัติและ shrink prompt ก่อนตัดสินใจ fallback
 
 ## Run
@@ -129,6 +134,31 @@ curl -X POST http://127.0.0.1:8000/jobs \
       ]
     }
   }'
+```
+
+รองรับ endpoint แบบ multipart เพื่อให้ใช้งานร่วมกับ `video_minutes_service.py` ได้ตรงรูปแบบเดิม:
+- `POST /generate` (default `report_layout=react_official`)
+- `POST /generate_react` (default `report_layout=react_official`)
+
+Multipart fields ที่รองรับ:
+- `attendees_text` (required, map ไป `MEETING_INFO`)
+- `agenda_text` (optional, map ไป `AGENDA_TEXT`)
+- `file` (required, JSON transcript)
+- `ocr_file` (optional, JSON OCR payload)
+- `TOPIC_TIME_OVERRIDES` (optional, JSON string array)
+- `topic_time_overrides` (optional, backward-compatible alias)
+- `mode` (optional: `agenda` | `auto`)
+- `report_layout` (optional: `current` | `react_official`, override ค่า default ของ endpoint)
+
+ตัวอย่าง:
+
+```bash
+curl -X POST http://127.0.0.1:8000/generate_react \
+  -F 'attendees_text=Alice, Bob' \
+  -F 'agenda_text=Sprint review + action items' \
+  -F 'TOPIC_TIME_OVERRIDES=[{"topic":"วาระที่ 1","start_time":"00:00:00","end_time":"00:10:00"}]' \
+  -F 'file=@./data/transcript_2025-01-04.json;type=application/json' \
+  -F 'ocr_file=@./data/video_change_ocr/run_20260212_160538/capture_ocr_results.json;type=application/json'
 ```
 
 ### Check Status / Result

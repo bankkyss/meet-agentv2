@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: meet-sum-api-config
+data:
+  # Ollama-only mode
+  ALLOW_CHAT_FALLBACK: "true"
+  ALLOW_OLLAMA_CHAT_FALLBACK: "true"
+  CHAT_FALLBACK_PROVIDER: "ollama"
+  EMBEDDING_PROVIDER: "ollama"
+
+  OLLAMA_BASE_URL: "http://ollama.default.svc.cluster.local:11434"
+  OLLAMA_CHAT_MODEL: "scb10x/typhoon2.5-qwen3-30b-a3b:latest"
+  OLLAMA_EMBED_MODEL: "nomic-embed-text"
+
+  # Pipeline / API options
+  SUMMARIZE_MODE: "agenda"
+  INCLUDE_OCR: "true"
+  IMAGE_INSERT_ENABLED: "true"
+  REPORT_LAYOUT_MODE: "react_official"
+  PIPELINE_MAX_CONCURRENCY: "2"
+
+  API_LOG_LEVEL: "INFO"
+  API_CORS_ALLOW_ORIGINS: "*"
+  API_CORS_ALLOW_METHODS: "*"
+  API_CORS_ALLOW_HEADERS: "*"
+  API_CORS_ALLOW_CREDENTIALS: "false"
+  API_MAX_REQUEST_BODY_BYTES: "5242880"
+  API_MAX_SEGMENTS: "10000"
+  API_MAX_FULL_TEXT_CHARS: "1500000"
+  API_MAX_MEETING_INFO_CHARS: "200000"
+  API_MAX_AGENDA_TEXT_CHARS: "500000"
+  API_MAX_TOPIC_TIME_OVERRIDES: "2000"
+  API_MAX_CAPTURES: "30000"
+  API_WORKER_JOIN_TIMEOUT_SEC: "10"
+  API_PROCESS_TERMINATE_GRACE_SEC: "5"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: meet-sum-api-secret
+type: Opaque
+stringData:
+  # Keep empty to force fallback-only mode (no Typhoon calls).
+  TYPHOON_API_KEY: ""
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: meet-sum-api
+  labels:
+    app: meet-sum-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: meet-sum-api
+  template:
+    metadata:
+      labels:
+        app: meet-sum-api
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+      - name: meet-sum-api
+        image: your-registry/meet-sum-api:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: meet-sum-api-config
+        - secretRef:
+            name: meet-sum-api-secret
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "1000m"
+            memory: "2Gi"
+        volumeMounts:
+        - name: output
+          mountPath: /app/output
+      volumes:
+      - name: output
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: meet-sum-api
+  labels:
+    app: meet-sum-api
+spec:
+  type: NodePort
+  selector:
+    app: meet-sum-api
+  ports:
+  - name: http
+    protocol: TCP
+    port: 8000
+    targetPort: 8000
+    nodePort: 30080

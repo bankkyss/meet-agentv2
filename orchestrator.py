@@ -14,18 +14,37 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
     if report_layout_mode not in {"current", "react_official"}:
         report_layout_mode = "current"
 
+    chat_fallback_provider = os.getenv("CHAT_FALLBACK_PROVIDER", "ollama").strip().lower()
+    if chat_fallback_provider not in {"ollama", "vllm"}:
+        chat_fallback_provider = "ollama"
+
+    embedding_provider = os.getenv("EMBEDDING_PROVIDER", "ollama").strip().lower()
+    if embedding_provider not in {"ollama", "vllm"}:
+        embedding_provider = "ollama"
+
+    allow_chat_fallback = env_bool(
+        "ALLOW_CHAT_FALLBACK",
+        env_bool("ALLOW_OLLAMA_CHAT_FALLBACK", False),
+    )
+
     return PipelineConfig(
         typhoon_api_key=os.getenv("TYPHOON_API_KEY", "").strip(),
         typhoon_base_url=os.getenv("TYPHOON_BASE_URL", "https://api.opentyphoon.ai/v1").strip(),
         typhoon_model=os.getenv("TYPHOON_MODEL", "typhoon-v2.5-30b-a3b-instruct").strip(),
         typhoon_max_tokens=env_int("TYPHOON_MAX_TOKENS", 8192),
+        chat_fallback_provider=chat_fallback_provider,
+        embedding_provider=embedding_provider,
         ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").strip(),
         ollama_embed_model=os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text").strip(),
         ollama_chat_model=os.getenv(
             "OLLAMA_CHAT_MODEL",
             os.getenv("OLLAMA_MODEL", "scb10x/typhoon2.5-qwen3-30b-a3b:latest"),
         ).strip(),
-        allow_ollama_chat_fallback=env_bool("ALLOW_OLLAMA_CHAT_FALLBACK", False),
+        vllm_base_url=os.getenv("VLLM_BASE_URL", "http://localhost:8000").strip(),
+        vllm_api_key=os.getenv("VLLM_API_KEY", "EMPTY").strip(),
+        vllm_chat_model=os.getenv("VLLM_CHAT_MODEL", "Qwen/Qwen3.5-35B-A3B-FP8").strip(),
+        vllm_embed_model=os.getenv("VLLM_EMBED_MODEL", "qwen3-embedding:0.6b").strip(),
+        allow_ollama_chat_fallback=allow_chat_fallback,
         summarize_mode=(args.mode or os.getenv("SUMMARIZE_MODE", "agenda")).strip().lower(),
         include_ocr=env_bool("INCLUDE_OCR", True),
         image_insert_enabled=env_bool("IMAGE_INSERT_ENABLED", True),

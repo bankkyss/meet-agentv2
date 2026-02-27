@@ -443,6 +443,25 @@ def split_paragraphs(text: str) -> list[str]:
     return buf
 
 
+def _image_identity(item: dict[str, Any]) -> str:
+    keys = [
+        "image_base64",
+        "resolved_image_path",
+        "image_path",
+        "image_presigned_url",
+        "image_url",
+        "presigned_url",
+        "s3_presigned_url",
+        "s3_url",
+        "url",
+    ]
+    for key in keys:
+        value = str(item.get(key, "") or "").strip()
+        if value:
+            return value
+    return ""
+
+
 def render_figure(item: dict[str, Any], fig_num: int, table_num: int) -> str:
     render_as = str(item.get("render_as", "") or "")
     content_summary = escape(str(item.get("content_summary", "")))
@@ -695,7 +714,7 @@ def fallback_render_html(
         remaining = [
             img
             for img in all_imgs_flat
-            if str(img.get("image_base64", "") or img.get("image_path", "") or "") not in rendered_image_urls
+            if _image_identity(img) not in rendered_image_urls
         ]
         imgs = _select_images_for_section(
             remaining_images=remaining,
@@ -705,7 +724,7 @@ def fallback_render_html(
             prefer_topic_id=bool(topic_id and topic_id_counts.get(topic_id, 0) == 1),
         )
         for img in imgs:
-            img_url = str(img.get("image_base64", "") or img.get("image_path", "") or "")
+            img_url = _image_identity(img)
             if img_url:
                 rendered_image_urls.add(img_url)
         p5 = [x for x in imgs if int(x.get("insertion_priority", 0) or 0) >= 5]
@@ -806,7 +825,7 @@ def fallback_render_html(
     unmatched_images = []
     seen = set()
     for item in all_imgs_flat:
-        img_url = str(item.get("image_base64", "") or item.get("image_path", "") or "")
+        img_url = _image_identity(item)
         if not img_url or img_url in rendered_image_urls or img_url in seen:
             continue
         seen.add(img_url)
@@ -943,6 +962,12 @@ def _pick_image_src(item: dict[str, Any], preferred: str = "image_base64") -> st
             str(item.get("before_image_path", "") or ""),
             str(item.get("after_image_path", "") or ""),
             str(item.get("resolved_image_path", "") or ""),
+            str(item.get("image_presigned_url", "") or ""),
+            str(item.get("image_url", "") or ""),
+            str(item.get("presigned_url", "") or ""),
+            str(item.get("s3_presigned_url", "") or ""),
+            str(item.get("s3_url", "") or ""),
+            str(item.get("url", "") or ""),
             str(item.get("image_path", "") or ""),
         ]
     )
@@ -1066,7 +1091,7 @@ def fallback_render_html_react_official(
         remaining = [
             img
             for img in all_imgs_flat
-            if str(img.get("image_base64", "") or img.get("image_path", "") or "") not in rendered_image_urls
+            if _image_identity(img) not in rendered_image_urls
         ]
         imgs = _select_images_for_section(
             remaining_images=remaining,
@@ -1076,7 +1101,7 @@ def fallback_render_html_react_official(
         )
         media_blocks: list[str] = []
         for item in imgs:
-            img_url = str(item.get("image_base64", "") or item.get("image_path", "") or "")
+            img_url = _image_identity(item)
             if not img_url or img_url in rendered_image_urls:
                 continue
             block = _render_official_media(item, figure_num, table_num)
@@ -1144,7 +1169,7 @@ def fallback_render_html_react_official(
     unmapped_images = []
     seen = set()
     for item in all_imgs_flat:
-        img_url = str(item.get("image_base64", "") or item.get("image_path", "") or "")
+        img_url = _image_identity(item)
         if not img_url or img_url in rendered_image_urls or img_url in seen:
             continue
         seen.add(img_url)

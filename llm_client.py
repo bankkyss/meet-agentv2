@@ -9,7 +9,7 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama, OllamaEmbeddings
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from pipeline_utils import PipelineConfig, PipelineError, fill_template
 from prompts import JSON_REPAIR_SYS, JSON_REPAIR_USR
@@ -133,15 +133,25 @@ def _message_to_text(message: Any) -> str:
     return str(content or "")
 
 
+def _normalize_openai_base_url(base_url: str) -> str:
+    text = str(base_url or "").strip().rstrip("/")
+    if not text:
+        return text
+    if text.endswith("/v1"):
+        return text
+    return text + "/v1"
+
+
 class LLMClient:
     def __init__(self, cfg: PipelineConfig):
         self.cfg = cfg
         self.typhoon_llm: ChatOpenAI | None = None
         self.ollama_chat_llm: ChatOllama | None = None
-        self.embedder: OllamaEmbeddings | None = None
+        self.vllm_chat_llm: ChatOpenAI | None = None
+        self.embedder: Any | None = None
         self.call_log: list[dict[str, Any]] = []
-        self._ollama_fallback_warned = False
-        self._ollama_only_mode = False
+        self._fallback_notice_printed = False
+        self._fallback_only_mode = False
 
         if cfg.typhoon_api_key and cfg.typhoon_base_url:
             self.typhoon_llm = ChatOpenAI(
@@ -153,22 +163,51 @@ class LLMClient:
                 timeout=cfg.llm_timeout_sec,
             )
 
-        self.ollama_chat_llm = ChatOllama(
-            model=cfg.ollama_chat_model,
-            base_url=cfg.ollama_base_url,
-            temperature=0.1,
-            num_predict=8192,
-        )
-        self.embedder = OllamaEmbeddings(
-            model=cfg.ollama_embed_model,
-            base_url=cfg.ollama_base_url,
-        )
-        self._ollama_only_mode = self.typhoon_llm is None
+        if cfg.chat_fallback_provider == "ollama":
+            self.ollama_chat_llm = ChatOllama(
+                model=cfg.ollama_chat_model,
+                base_url=cfg.ollama_base_url,
+                temperature=0.1,
+                num_predict=8192,
+            )
+        elif cfg.chat_fallback_provider == "vllm":
+            self.vllm_chat_llm = ChatOpenAI(
+                model=cfg.vllm_chat_model,
+                api_key=cfg.vllm_api_key or "EMPTY",
+                base_url=_normalize_openai_base_url(cfg.vllm_base_url),
+                temperature=0.1,
+                max_tokens=max(int(cfg.typhoon_max_tokens or 8192), 256),
+                timeout=cfg.llm_timeout_sec,
+            )
+        else:
+            raise PipelineError(
+                f"Unsupported CHAT_FALLBACK_PROVIDER={cfg.chat_fallback_provider!r}; "
+                "allowed values: ollama, vllm"
+            )
+
+        if cfg.embedding_provider == "ollama":
+            self.embedder = OllamaEmbeddings(
+                model=cfg.ollama_embed_model,
+                base_url=cfg.ollama_base_url,
+            )
+        elif cfg.embedding_provider == "vllm":
+            self.embedder = OpenAIEmbeddings(
+                model=cfg.vllm_embed_model,
+                api_key=cfg.vllm_api_key or "EMPTY",
+                base_url=_normalize_openai_base_url(cfg.vllm_base_url),
+            )
+        else:
+            raise PipelineError(
+                f"Unsupported EMBEDDING_PROVIDER={cfg.embedding_provider!r}; "
+                "allowed values: ollama, vllm"
+            )
+
+        self._fallback_only_mode = self.typhoon_llm is None
 
         if not self.typhoon_llm and not cfg.allow_ollama_chat_fallback:
             raise PipelineError(
                 "Typhoon is unavailable and chat fallback is disabled "
-                "(set ALLOW_OLLAMA_CHAT_FALLBACK=true for Option B)."
+                "(set ALLOW_CHAT_FALLBACK=true for fallback mode)."
             )
 
     def _providers_in_order(self) -> list[str]:
@@ -176,7 +215,7 @@ class LLMClient:
         if self.typhoon_llm:
             providers.append("typhoon")
         if self.cfg.allow_ollama_chat_fallback:
-            providers.append("ollama")
+            providers.append(self.cfg.chat_fallback_provider)
         return providers
 
     def _invoke_typhoon(self, system: str, user: str, json_mode: bool) -> str:
@@ -236,6 +275,55 @@ class LLMClient:
             raise PipelineError("Ollama returned empty response")
         return content
 
+    def _invoke_vllm(self, system: str, user: str, json_mode: bool = False) -> str:
+        if not self.vllm_chat_llm:
+            raise PipelineError("vLLM chat model is not configured")
+        messages = [
+            SystemMessage(content=system),
+            HumanMessage(content=user),
+        ]
+        model = self.vllm_chat_llm
+        if json_mode:
+            try:
+                model = model.bind(response_format={"type": "json_object"})
+            except Exception:
+                pass
+        resp = model.invoke(messages)
+        content = _message_to_text(resp)
+        if not content:
+            raise PipelineError("vLLM returned empty response")
+        return content
+
+    def _invoke_by_provider(self, provider: str, system: str, user: str, json_mode: bool) -> str:
+        if provider == "typhoon":
+            return self._invoke_typhoon(system, user, json_mode=json_mode)
+        if provider == "ollama":
+            return self._invoke_ollama(system, user, json_mode=json_mode)
+        if provider == "vllm":
+            return self._invoke_vllm(system, user, json_mode=json_mode)
+        raise PipelineError(f"Unknown provider: {provider}")
+
+    def _maybe_log_fallback_notice(self, provider: str) -> None:
+        if provider == "typhoon" or self._fallback_notice_printed:
+            return
+        if self._fallback_only_mode:
+            if provider == "ollama":
+                print("ℹ️ Ollama-only mode active (Typhoon not configured).")
+            else:
+                print("ℹ️ vLLM-only mode active (Typhoon not configured).")
+        else:
+            if provider == "ollama":
+                print(
+                    "⚠️ Using Ollama chat fallback (quality may differ from Typhoon). "
+                    "Set ALLOW_CHAT_FALLBACK=false for Typhoon-only mode."
+                )
+            else:
+                print(
+                    "⚠️ Using vLLM chat fallback (quality may differ from Typhoon). "
+                    "Set ALLOW_CHAT_FALLBACK=false for Typhoon-only mode."
+                )
+        self._fallback_notice_printed = True
+
     def _repair_json(self, broken: str, required_keys: list[str], tag: str) -> dict[str, Any] | None:
         try:
             return parse_json_or_raise(broken, f"{tag}/repair-heuristic")
@@ -251,10 +339,7 @@ class LLMClient:
         for provider in self._providers_in_order():
             start = time.time()
             try:
-                if provider == "typhoon":
-                    raw = self._invoke_typhoon(JSON_REPAIR_SYS, repair_prompt, json_mode=False)
-                else:
-                    raw = self._invoke_ollama(JSON_REPAIR_SYS, repair_prompt, json_mode=True)
+                raw = self._invoke_by_provider(provider, JSON_REPAIR_SYS, repair_prompt, json_mode=True)
                 parsed = parse_json_or_raise(raw, f"{tag}/repair-{provider}")
                 validate_keys(parsed, required_keys, f"{tag}/repair-{provider}")
                 self.call_log.append(
@@ -262,7 +347,7 @@ class LLMClient:
                         "tag": tag,
                         "provider": provider,
                         "phase": "repair",
-                        "chat_fallback_used": provider == "ollama",
+                        "chat_fallback_used": provider != "typhoon",
                         "success": True,
                         "latency_sec": round(time.time() - start, 3),
                     }
@@ -274,7 +359,7 @@ class LLMClient:
                         "tag": tag,
                         "provider": provider,
                         "phase": "repair",
-                        "chat_fallback_used": provider == "ollama",
+                        "chat_fallback_used": provider != "typhoon",
                         "success": False,
                         "latency_sec": round(time.time() - start, 3),
                         "error": str(exc),
@@ -299,19 +384,8 @@ class LLMClient:
                 start = time.time()
                 raw = ""
                 try:
-                    if provider == "typhoon":
-                        raw = self._invoke_typhoon(system, user, json_mode=json_mode)
-                    else:
-                        if not self._ollama_fallback_warned:
-                            if self._ollama_only_mode:
-                                print("ℹ️ Ollama-only mode active (Typhoon not configured).")
-                            else:
-                                print(
-                                    "⚠️ Using Ollama chat fallback (quality may differ from Typhoon). "
-                                    "Set ALLOW_OLLAMA_CHAT_FALLBACK=false for Typhoon-only mode."
-                                )
-                            self._ollama_fallback_warned = True
-                        raw = self._invoke_ollama(system, user, json_mode=json_mode)
+                    self._maybe_log_fallback_notice(provider)
+                    raw = self._invoke_by_provider(provider, system, user, json_mode=json_mode)
 
                     if not json_mode:
                         self.call_log.append(
@@ -319,7 +393,7 @@ class LLMClient:
                                 "tag": tag,
                                 "provider": provider,
                                 "attempt": attempt,
-                                "chat_fallback_used": provider == "ollama",
+                                "chat_fallback_used": provider != "typhoon",
                                 "success": True,
                                 "latency_sec": round(time.time() - start, 3),
                             }
@@ -335,7 +409,7 @@ class LLMClient:
                             "tag": tag,
                             "provider": provider,
                             "attempt": attempt,
-                            "chat_fallback_used": provider == "ollama",
+                            "chat_fallback_used": provider != "typhoon",
                             "success": True,
                             "latency_sec": round(time.time() - start, 3),
                         }
@@ -348,7 +422,7 @@ class LLMClient:
                             "tag": tag,
                             "provider": provider,
                             "attempt": attempt,
-                            "chat_fallback_used": provider == "ollama",
+                            "chat_fallback_used": provider != "typhoon",
                             "success": False,
                             "latency_sec": round(time.time() - start, 3),
                             "error": str(exc),
@@ -369,4 +443,10 @@ class LLMClient:
             vectors = self.embedder.embed_documents(texts)
             return [list(v) for v in vectors]
         except Exception as exc:
+            msg = str(exc)
+            if self.cfg.embedding_provider == "vllm" and ("404" in msg or "Not Found" in msg):
+                raise PipelineError(
+                    "Embedding failed: vLLM endpoint does not expose /v1/embeddings for the configured model. "
+                    "Use EMBEDDING_PROVIDER=ollama or deploy a vLLM embedding endpoint."
+                ) from exc
             raise PipelineError(f"Embedding failed: {exc}") from exc

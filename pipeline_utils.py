@@ -21,9 +21,15 @@ class PipelineConfig:
     typhoon_base_url: str
     typhoon_model: str
     typhoon_max_tokens: int
+    chat_fallback_provider: str
+    embedding_provider: str
     ollama_base_url: str
     ollama_embed_model: str
     ollama_chat_model: str
+    vllm_base_url: str
+    vllm_api_key: str
+    vllm_chat_model: str
+    vllm_embed_model: str
     allow_ollama_chat_fallback: bool
     summarize_mode: str
     include_ocr: bool

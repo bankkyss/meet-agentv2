@@ -13,10 +13,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, ValidationError, model_validator
 
 from pipeline_utils import hms_to_sec, sec_to_hms
 
@@ -230,12 +230,13 @@ def _is_remote_http_path(value: str) -> bool:
 
 def _pick_image_path(item: dict[str, Any]) -> str:
     choices = [
-        "image_path",
+        "image_presigned_url",
         "image_url",
         "presigned_url",
         "s3_presigned_url",
         "s3_url",
         "url",
+        "image_path",
     ]
     for key in choices:
         raw = str(item.get(key, "") or "").strip()
@@ -614,6 +615,144 @@ def _job_urls(request: Request, job_id: str) -> tuple[str, str, str]:
     return status_url, html_url, logs_url
 
 
+def _build_job_create_response(payload: MeetingRunRequest, request: Request) -> JobCreateResponse:
+    if not payload.segments:
+        raise HTTPException(status_code=400, detail="segments is required and cannot be empty")
+    if not str(payload.MEETING_INFO or "").strip():
+        raise HTTPException(status_code=400, detail="MEETING_INFO is required")
+
+    rec = MANAGER.submit(payload)
+    queue_position = MANAGER.queue_position(rec.job_id)
+    LOGGER.info("job accepted job_id=%s queue_position=%s", rec.job_id, queue_position)
+    status_url, html_url, logs_url = _job_urls(request, rec.job_id)
+    return JobCreateResponse(
+        job_id=rec.job_id,
+        status=rec.status,
+        queue_position=queue_position,
+        status_url=status_url,
+        html_url=html_url,
+        logs_url=logs_url,
+    )
+
+
+def _build_full_text_from_segments(segments: list[dict[str, Any]]) -> str:
+    lines: list[str] = []
+    for row in segments:
+        if not isinstance(row, dict):
+            continue
+        text = str(row.get("text", "") or "").strip()
+        if text:
+            lines.append(text)
+    return "\n".join(lines)
+
+
+def _extract_transcript_payload(obj: Any) -> tuple[list[dict[str, Any]], str]:
+    if isinstance(obj, dict):
+        segments = obj.get("segments")
+        full_text = obj.get("full_text")
+    elif isinstance(obj, list):
+        segments = obj
+        full_text = None
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="file must be a JSON object or array with transcript segments",
+        )
+
+    if not isinstance(segments, list):
+        raise HTTPException(status_code=400, detail="file.segments must be an array")
+
+    for i, segment in enumerate(segments, start=1):
+        if not isinstance(segment, dict):
+            raise HTTPException(status_code=400, detail=f"file.segments[{i}] must be an object")
+
+    if full_text is None:
+        full_text_value = _build_full_text_from_segments(segments)
+    else:
+        full_text_value = str(full_text or "")
+
+    return segments, full_text_value
+
+
+async def _read_json_upload(upload: UploadFile, field_name: str) -> Any:
+    raw = await upload.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail=f"{field_name} is empty")
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"{field_name} must be UTF-8 JSON") from exc
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"{field_name} is not valid JSON: {exc.msg}") from exc
+
+
+def _parse_topic_time_overrides(raw: str | None) -> list[dict[str, Any]] | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        obj = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"topic_time_overrides must be valid JSON: {exc.msg}") from exc
+    if not isinstance(obj, list):
+        raise HTTPException(status_code=400, detail="topic_time_overrides must be a JSON array")
+    rows: list[dict[str, Any]] = []
+    for i, row in enumerate(obj, start=1):
+        if not isinstance(row, dict):
+            raise HTTPException(status_code=400, detail=f"topic_time_overrides[{i}] must be an object")
+        rows.append(row)
+    return rows
+
+
+async def _create_multipart_job(
+    *,
+    request: Request,
+    attendees_text: str,
+    agenda_text: str | None,
+    transcript_file: UploadFile,
+    ocr_file: UploadFile | None,
+    default_report_layout: Literal["current", "react_official"],
+    report_layout: Literal["current", "react_official"] | None,
+    mode: Literal["agenda", "auto"] | None,
+    topic_time_overrides: str | None,
+) -> JobCreateResponse:
+    transcript_obj = await _read_json_upload(transcript_file, "file")
+    segments, full_text = _extract_transcript_payload(transcript_obj)
+
+    capture_payload: dict[str, Any] | None = None
+    if ocr_file is not None:
+        ocr_obj = await _read_json_upload(ocr_file, "ocr_file")
+        if isinstance(ocr_obj, dict):
+            capture_payload = ocr_obj
+        elif isinstance(ocr_obj, list):
+            capture_payload = {"captures": ocr_obj}
+        else:
+            raise HTTPException(status_code=400, detail="ocr_file must be a JSON object or array")
+
+    payload_dict: dict[str, Any] = {
+        "MEETING_INFO": str(attendees_text or ""),
+        "AGENDA_TEXT": str(agenda_text or ""),
+        "segments": segments,
+        "full_text": full_text,
+        "capture_ocr_results": capture_payload,
+        "report_layout": report_layout or default_report_layout,
+        "mode": mode,
+    }
+
+    overrides = _parse_topic_time_overrides(topic_time_overrides)
+    if overrides:
+        payload_dict["TOPIC_TIME_OVERRIDES"] = overrides
+
+    try:
+        payload = MeetingRunRequest.model_validate(payload_dict)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+
+    return _build_job_create_response(payload, request)
+
+
 PROJECT_ROOT = Path(__file__).resolve().parent
 JOBS_ROOT = Path(API_JOBS_ROOT).expanduser() if API_JOBS_ROOT else None
 MANAGER = JobQueueManager(PROJECT_ROOT, jobs_root=JOBS_ROOT)
@@ -679,22 +818,58 @@ def health() -> dict[str, Any]:
 
 @app.post("/jobs", response_model=JobCreateResponse, status_code=202)
 def create_job(payload: MeetingRunRequest, request: Request) -> JobCreateResponse:
-    if not payload.segments:
-        raise HTTPException(status_code=400, detail="segments is required and cannot be empty")
-    if not str(payload.MEETING_INFO or "").strip():
-        raise HTTPException(status_code=400, detail="MEETING_INFO is required")
+    return _build_job_create_response(payload, request)
 
-    rec = MANAGER.submit(payload)
-    queue_position = MANAGER.queue_position(rec.job_id)
-    LOGGER.info("job accepted job_id=%s queue_position=%s", rec.job_id, queue_position)
-    status_url, html_url, logs_url = _job_urls(request, rec.job_id)
-    return JobCreateResponse(
-        job_id=rec.job_id,
-        status=rec.status,
-        queue_position=queue_position,
-        status_url=status_url,
-        html_url=html_url,
-        logs_url=logs_url,
+
+@app.post("/generate", response_model=JobCreateResponse, status_code=202)
+async def generate_multipart(
+    request: Request,
+    attendees_text: str = Form(...),
+    agenda_text: str | None = Form(default=None),
+    file: UploadFile = File(...),
+    ocr_file: UploadFile | None = File(default=None),
+    topic_time_overrides: str | None = Form(default=None),
+    TOPIC_TIME_OVERRIDES: str | None = Form(default=None),
+    mode: Literal["agenda", "auto"] | None = Form(default=None),
+    report_layout: Literal["current", "react_official"] | None = Form(default=None),
+) -> JobCreateResponse:
+    effective_overrides = TOPIC_TIME_OVERRIDES or topic_time_overrides
+    return await _create_multipart_job(
+        request=request,
+        attendees_text=attendees_text,
+        agenda_text=agenda_text,
+        transcript_file=file,
+        ocr_file=ocr_file,
+        default_report_layout="react_official",
+        report_layout=report_layout,
+        mode=mode,
+        topic_time_overrides=effective_overrides,
+    )
+
+
+@app.post("/generate_react", response_model=JobCreateResponse, status_code=202)
+async def generate_react_multipart(
+    request: Request,
+    attendees_text: str = Form(...),
+    agenda_text: str | None = Form(default=None),
+    file: UploadFile = File(...),
+    ocr_file: UploadFile | None = File(default=None),
+    topic_time_overrides: str | None = Form(default=None),
+    TOPIC_TIME_OVERRIDES: str | None = Form(default=None),
+    mode: Literal["agenda", "auto"] | None = Form(default=None),
+    report_layout: Literal["current", "react_official"] | None = Form(default=None),
+) -> JobCreateResponse:
+    effective_overrides = TOPIC_TIME_OVERRIDES or topic_time_overrides
+    return await _create_multipart_job(
+        request=request,
+        attendees_text=attendees_text,
+        agenda_text=agenda_text,
+        transcript_file=file,
+        ocr_file=ocr_file,
+        default_report_layout="react_official",
+        report_layout=report_layout,
+        mode=mode,
+        topic_time_overrides=effective_overrides,
     )
 
 
