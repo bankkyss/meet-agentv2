@@ -462,13 +462,33 @@ def _image_identity(item: dict[str, Any]) -> str:
     return ""
 
 
+def _has_renderable_image(item: dict[str, Any]) -> bool:
+    return bool(str(_pick_image_src(item) or "").strip())
+
+
+def _has_renderable_table(item: dict[str, Any]) -> bool:
+    table_html = str(item.get("table_html", "") or "").strip()
+    if not table_html:
+        return False
+    # Placeholder tables like "<table>...</table>" should not override real images.
+    compact = table_html.replace(" ", "").lower()
+    if compact in {"<table>...</table>", "<table></table>"}:
+        return False
+    return True
+
+
+def _should_render_as_table(item: dict[str, Any]) -> bool:
+    render_as = str(item.get("render_as", "") or "")
+    return render_as == "html_table" and (not _has_renderable_image(item)) and _has_renderable_table(item)
+
+
 def render_figure(item: dict[str, Any], fig_num: int, table_num: int) -> str:
     render_as = str(item.get("render_as", "") or "")
     content_summary = escape(str(item.get("content_summary", "")))
     caption = escape(str(item.get("caption_th", "")))
     ts = escape(str(item.get("timestamp_hms", "")))
 
-    if render_as == "html_table":
+    if _should_render_as_table(item):
         table_html = str(item.get("table_html", "") or "")
         return (
             '<figure class="slide-figure data-table">'
@@ -547,7 +567,7 @@ def render_images_block(
     for i, item in enumerate(images):
         render_as = str(item.get("render_as", "") or "")
         html_parts.append(render_figure(item, fig_n, table_n))
-        if render_as == "html_table":
+        if _should_render_as_table(item):
             table_n += 1
         else:
             fig_n += 1
@@ -983,16 +1003,15 @@ def _render_official_media(item: dict[str, Any], fig_num: int, table_num: int) -
     caption = escape(str(item.get("caption_th", "") or ""))
     ts = escape(str(item.get("timestamp_hms", "") or ""))
 
-    if render_as == "html_table":
+    if _should_render_as_table(item):
         table_html = str(item.get("table_html", "") or "")
-        if table_html:
-            return (
-                '<div class="agenda-image-wrap">'
-                f'<div class="agenda-image-caption"><strong>ตารางที่ {table_num}</strong> {summary}</div>'
-                f"{table_html}"
-                f'<div class="agenda-image-link">{caption} <span class="ts">{ts}</span></div>'
-                "</div>"
-            )
+        return (
+            '<div class="agenda-image-wrap">'
+            f'<div class="agenda-image-caption"><strong>ตารางที่ {table_num}</strong> {summary}</div>'
+            f"{table_html}"
+            f'<div class="agenda-image-link">{caption} <span class="ts">{ts}</span></div>'
+            "</div>"
+        )
 
     if render_as == "before_after" or str(item.get("special_pattern", "") or "") == "BEFORE_AFTER":
         before = escape(_pick_image_src(item, preferred="before_base64"))
@@ -1108,7 +1127,7 @@ def fallback_render_html_react_official(
             if block:
                 rendered_image_urls.add(img_url)
                 media_blocks.append(block)
-                if str(item.get("render_as", "") or "") == "html_table":
+                if _should_render_as_table(item):
                     table_num += 1
                 else:
                     figure_num += 1
@@ -1181,7 +1200,7 @@ def fallback_render_html_react_official(
         block = _render_official_media(item, figure_num, table_num)
         if block:
             unmapped_blocks.append(block)
-            if str(item.get("render_as", "") or "") == "html_table":
+            if _should_render_as_table(item):
                 table_num += 1
             else:
                 figure_num += 1

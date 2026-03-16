@@ -89,15 +89,17 @@ def group_manifest_by_topic(
     manifest: list[dict[str, Any]],
     max_per_topic: int,
     min_file_size_kb: int,
+    include_all: bool = False,
 ) -> dict[str, list[dict[str, Any]]]:
     grouped: dict[str, list[dict[str, Any]]] = {}
     min_bytes = min_file_size_kb * 1024
 
     for item in manifest:
-        if int(item.get("insertion_priority", 0) or 0) < 3:
-            continue
-        if int(item.get("ocr_file_size_bytes", 0) or 0) < min_bytes:
-            continue
+        if not include_all:
+            if int(item.get("insertion_priority", 0) or 0) < 3:
+                continue
+            if int(item.get("ocr_file_size_bytes", 0) or 0) < min_bytes:
+                continue
 
         topic_id = str(item.get("topic_id", "") or "")
         if not topic_id:

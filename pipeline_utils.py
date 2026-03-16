@@ -40,6 +40,7 @@ class PipelineConfig:
     image_embed_mode: str
     image_max_per_topic: int
     image_min_file_size_kb: int
+    image_include_all: bool
     output_html_path: str
     transcript_path: str
     config_path: str
@@ -53,6 +54,9 @@ class PipelineConfig:
     agent1_subchunk_size: int
     agent1_ocr_max_captures: int
     agent1_ocr_snippet_chars: int
+    agent1_ocr_only_chunk_chars: int
+    agent1_ocr_only_overlap_pct: int
+    agent1_ocr_only_max_chunks_per_capture: int
     agent2_chunk_size: int
     agent25_chunk_size: int
     resume_artifact_dir: str

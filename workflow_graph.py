@@ -89,10 +89,19 @@ class MeetingWorkflow:
     def __init__(self, cfg: PipelineConfig):
         self.cfg = cfg
         self.llm = LLMClient(cfg)
+        self._active_artifact_dir: Path | None = None
+        self._active_run_meta: dict[str, Any] | None = None
+        self.llm.set_call_log_hook(self._persist_live_run_meta)
         self.graph = self._build_graph().compile()
 
     def _artifact_path(self, state: WorkflowState, filename: str) -> Path:
         return Path(state["artifact_dir"]) / filename
+
+    def _persist_live_run_meta(self, call_log: list[dict[str, Any]] | None = None) -> None:
+        if not self.cfg.save_intermediate or self._active_artifact_dir is None or self._active_run_meta is None:
+            return
+        self._active_run_meta["provider_calls"] = list(call_log or self.llm.call_log)
+        save_json(self._active_artifact_dir / "run_metadata.json", self._active_run_meta)
 
     def _save_json_if_enabled(self, state: WorkflowState, filename: str, data: Any) -> None:
         if self.cfg.save_intermediate:
@@ -119,11 +128,26 @@ class MeetingWorkflow:
             log_path = Path(artifact_dir) / "runtime.log"
             with log_path.open("a", encoding="utf-8") as f:
                 f.write(line + "\n")
+            run_meta["provider_calls"] = list(self.llm.call_log)
+            save_json(Path(artifact_dir) / "run_metadata.json", run_meta)
 
     def _effective_workers(self, item_count: int) -> int:
         if item_count <= 1:
             return 1
         return max(1, min(self.cfg.pipeline_max_concurrency, item_count))
+
+    @staticmethod
+    def _is_timeout_like_error(err: Exception | str) -> bool:
+        text = str(err or "").lower()
+        markers = [
+            "timed out",
+            "timeout",
+            "[errno 60]",
+            "read timed out",
+            "connect timeout",
+            "operation timed out",
+        ]
+        return any(m in text for m in markers)
 
     def _agenda_sort_key(self, agenda_number: Any) -> tuple:
         raw = str(agenda_number or "").strip()
@@ -567,6 +591,10 @@ class MeetingWorkflow:
 
     def _build_ocr_only_payload_for_agent1(self, ocr_subset: list[dict[str, Any]]) -> list[dict[str, Any]]:
         payload: list[dict[str, Any]] = []
+        chunk_size = max(120, int(self.cfg.agent1_ocr_only_chunk_chars))
+        overlap_ratio = max(0.0, min(float(self.cfg.agent1_ocr_only_overlap_pct) / 100.0, 0.5))
+        max_chunks = max(1, int(self.cfg.agent1_ocr_only_max_chunks_per_capture))
+
         for idx, cap in enumerate(ocr_subset, start=1):
             raw = str(cap.get("ocr_text", "") or "")
             lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
@@ -576,7 +604,23 @@ class MeetingWorkflow:
 
             plain = re.sub(r"<[^>]+>", " ", raw)
             plain = re.sub(r"\s+", " ", plain).strip()
-            text_chunks = self._chunk_text_by_chars(plain, chunk_size=1000, overlap_ratio=0.10)
+            text_chunks = self._chunk_text_by_chars(plain, chunk_size=chunk_size, overlap_ratio=overlap_ratio)
+            if len(text_chunks) > max_chunks:
+                if max_chunks == 1:
+                    text_chunks = [text_chunks[0]]
+                else:
+                    head_n = max(1, max_chunks // 2)
+                    tail_n = max_chunks - head_n
+                    picked = text_chunks[:head_n] + text_chunks[-tail_n:]
+                    uniq: list[str] = []
+                    seen: set[str] = set()
+                    for part in picked:
+                        key = part.strip()
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        uniq.append(part)
+                    text_chunks = uniq[:max_chunks]
 
             total = len(text_chunks)
             for cidx, chunk_text in enumerate(text_chunks, start=1):
@@ -703,10 +747,15 @@ class MeetingWorkflow:
             AGENT1_SYS,
             user,
             json_mode=True,
-            required_keys=["meeting_meta", "timeline", "slides"],
+            # OCR-only enrichment is optional; avoid hard-failing on missing meta/timeline keys.
+            required_keys=[],
             tag=tag,
         )
         assert isinstance(out, dict)
+        if not isinstance(out.get("meeting_meta"), dict):
+            out["meeting_meta"] = {}
+        if not isinstance(out.get("slides"), list):
+            out["slides"] = []
         return out
 
     def _agent1_call_llm_transcript_only(
@@ -725,10 +774,15 @@ class MeetingWorkflow:
             AGENT1_SYS,
             user,
             json_mode=True,
-            required_keys=["meeting_meta", "timeline", "slides"],
+            # Transcript-only path primarily needs timeline; meta/slides can be filled with defaults.
+            required_keys=["timeline"],
             tag=tag,
         )
         assert isinstance(out, dict)
+        if not isinstance(out.get("meeting_meta"), dict):
+            out["meeting_meta"] = {}
+        if not isinstance(out.get("slides"), list):
+            out["slides"] = []
         has_text = any(str(seg.get("text", "") or "").strip() for seg in seg_chunk)
         if has_text and not isinstance(out.get("timeline"), list):
             raise PipelineError(f"{tag}: timeline is not a list")
@@ -936,6 +990,21 @@ class MeetingWorkflow:
                     out[key].append(item)
         return out
 
+    def _normalize_agent2_entities(self, raw_entities: Any) -> dict[str, list[dict[str, Any]]]:
+        keys = ["people", "projects", "equipment", "financials", "issues", "decisions", "action_items"]
+        empty = {k: [] for k in keys}
+        if not isinstance(raw_entities, dict):
+            return empty
+
+        out: dict[str, list[dict[str, Any]]] = {}
+        for key in keys:
+            values = raw_entities.get(key, [])
+            if isinstance(values, list):
+                out[key] = [item for item in values if isinstance(item, dict)]
+            else:
+                out[key] = []
+        return out
+
     def _collect_topics_from_partials(self, partial_kgs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         topics: list[dict[str, Any]] = []
         seen: set[tuple[str, str, str]] = set()
@@ -1038,6 +1107,183 @@ class MeetingWorkflow:
         if not topics:
             topics = self._synthesize_topics_from_timeline(cleaned)
         return {"entities": entities, "topics": topics}
+
+    def _normalize_agent2_kg(self, kg: Any) -> dict[str, Any]:
+        raw = kg if isinstance(kg, dict) else {}
+        topics = self._collect_topics_from_partials([raw])
+        return {
+            "entities": self._normalize_agent2_entities(raw.get("entities")),
+            "topics": topics,
+        }
+
+    def _prepare_agent2_payload(
+        self,
+        tl_chunk: list[dict[str, Any]],
+        slides_subset: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        # Keep Agent2 prompts compact to reduce timeout risk on long meetings.
+        max_timeline_text_chars = 280
+        max_slide_ctx_chars = 180
+        max_slide_ocr_chars = 420
+        max_slides = 3
+
+        compact_timeline: list[dict[str, Any]] = []
+        for row in tl_chunk:
+            if not isinstance(row, dict):
+                continue
+            text = re.sub(r"\s+", " ", str(row.get("text", "") or "")).strip()
+            if len(text) > max_timeline_text_chars:
+                text = text[: max_timeline_text_chars - 3].rstrip() + "..."
+            slide_ctx = re.sub(r"\s+", " ", str(row.get("slide_context", "") or "")).strip()
+            if len(slide_ctx) > max_slide_ctx_chars:
+                slide_ctx = slide_ctx[: max_slide_ctx_chars - 3].rstrip() + "..."
+            compact_timeline.append(
+                {
+                    "timestamp_sec": float(row.get("timestamp_sec", 0) or 0),
+                    "timestamp_hms": str(row.get("timestamp_hms", "00:00:00") or "00:00:00"),
+                    "speaker": str(row.get("speaker", "UNKNOWN") or "UNKNOWN"),
+                    "text": text,
+                    "slide_context": slide_ctx,
+                }
+            )
+
+        if compact_timeline:
+            mid_sec = (
+                float(compact_timeline[0].get("timestamp_sec", 0) or 0)
+                + float(compact_timeline[-1].get("timestamp_sec", 0) or 0)
+            ) / 2.0
+        else:
+            mid_sec = 0.0
+
+        ranked_slides: list[tuple[float, int, dict[str, Any]]] = []
+        for slide in slides_subset:
+            if not isinstance(slide, dict):
+                continue
+            ts_hms = str(slide.get("timestamp_hms", "00:00:00") or "00:00:00")
+            ts_sec = hms_to_sec(ts_hms)
+            ranked_slides.append((abs(ts_sec - mid_sec), ts_sec, slide))
+        ranked_slides.sort(key=lambda x: (x[0], x[1]))
+
+        compact_slides: list[dict[str, Any]] = []
+        for _, _, slide in ranked_slides[:max_slides]:
+            ocr_text = re.sub(r"\s+", " ", str(slide.get("ocr_text", "") or "")).strip()
+            if len(ocr_text) > max_slide_ocr_chars:
+                ocr_text = ocr_text[: max_slide_ocr_chars - 3].rstrip() + "..."
+            compact_slides.append(
+                {
+                    "timestamp_hms": str(slide.get("timestamp_hms", "00:00:00") or "00:00:00"),
+                    "image_path": str(slide.get("image_path", "") or ""),
+                    "ocr_text": ocr_text,
+                    "has_table": bool(slide.get("has_table", False)),
+                    "has_figure": bool(slide.get("has_figure", False)),
+                    "title": str(slide.get("title", "") or "")[:160],
+                }
+            )
+
+        return compact_timeline, compact_slides
+
+    def _agent2_call_llm(
+        self,
+        tl_chunk: list[dict[str, Any]],
+        slides_subset: list[dict[str, Any]],
+        meeting_meta: dict[str, Any],
+        *,
+        tag: str,
+    ) -> dict[str, Any]:
+        compact_timeline, compact_slides = self._prepare_agent2_payload(tl_chunk, slides_subset)
+        data = {
+            "meeting_meta": meeting_meta,
+            "timeline": compact_timeline,
+            "slides": compact_slides,
+        }
+        user = fill_template(AGENT2_USR, DATA=json.dumps(data, ensure_ascii=False))
+        out = self.llm.call(
+            AGENT2_SYS,
+            user,
+            json_mode=True,
+            required_keys=["entities", "topics"],
+            tag=tag,
+            # Fail fast: node-level deterministic recovery is cheaper than repeated long timeouts.
+            max_retries=1,
+        )
+        assert isinstance(out, dict)
+        return out
+
+    def _agent2_chunk_recover(
+        self,
+        tl_chunk: list[dict[str, Any]],
+        slides_subset: list[dict[str, Any]],
+        meeting_meta: dict[str, Any],
+        run_meta: dict[str, Any],
+        artifact_dir: str | None,
+        *,
+        chunk_label: str,
+        tag_prefix: str,
+    ) -> dict[str, Any]:
+        cleaned_subset = {
+            "meeting_meta": meeting_meta,
+            "timeline": tl_chunk,
+            "slides": slides_subset,
+        }
+        if len(tl_chunk) <= 1:
+            self._append_log(
+                run_meta,
+                artifact_dir,
+                "Agent2 deterministic fallback",
+                chunk=chunk_label,
+                rows=len(tl_chunk),
+            )
+            return self._agent2_deterministic_fallback([], cleaned_subset)
+
+        target_part_size = max(12, min(20, len(tl_chunk)))
+        parts = chunked(tl_chunk, target_part_size, overlap=0)
+        self._append_log(
+            run_meta,
+            artifact_dir,
+            "Agent2 split recover",
+            chunk=chunk_label,
+            subchunks=len(parts),
+            split_at=target_part_size,
+        )
+
+        partials: list[dict[str, Any]] = []
+        for sidx, sub in enumerate(parts, start=1):
+            sub_start = float(sub[0].get("timestamp_sec", 0) or 0)
+            sub_end = float(sub[-1].get("timestamp_sec", sub_start) or sub_start)
+            sub_slides = [
+                s
+                for s in slides_subset
+                if (sub_start - 120.0)
+                <= hms_to_sec(str(s.get("timestamp_hms", "00:00:00")))
+                <= (sub_end + 120.0)
+            ]
+            try:
+                partial = self._agent2_call_llm(
+                    sub,
+                    sub_slides,
+                    meeting_meta,
+                    tag=f"{tag_prefix}_sub{sidx}",
+                )
+            except Exception as sub_exc:
+                self._append_log(
+                    run_meta,
+                    artifact_dir,
+                    "Agent2 subchunk fallback",
+                    chunk=chunk_label,
+                    subchunk=f"{sidx}/{len(parts)}",
+                    error=str(sub_exc),
+                )
+                partial = self._agent2_deterministic_fallback(
+                    [],
+                    {
+                        "meeting_meta": meeting_meta,
+                        "timeline": sub,
+                        "slides": sub_slides,
+                    },
+                )
+            partials.append(partial)
+
+        return self._agent2_deterministic_fallback(partials, cleaned_subset)
 
     def _agent25_call_llm(
         self,
@@ -1250,6 +1496,7 @@ class MeetingWorkflow:
     def node_load_inputs(self, _: WorkflowState) -> WorkflowState:
         out_path = Path(self.cfg.output_html_path)
         ensure_dir(out_path.parent)
+        self.llm.call_log = []
 
         run_id = datetime.now().strftime("run_%Y%m%d_%H%M%S")
         artifact_dir = out_path.parent / "artifacts" / run_id
@@ -1332,6 +1579,7 @@ class MeetingWorkflow:
                 "image_insert_enabled": self.cfg.image_insert_enabled,
                 "report_layout_mode": self.cfg.report_layout_mode,
                 "image_embed_mode": self.cfg.image_embed_mode,
+                "image_include_all": self.cfg.image_include_all,
                 "allow_ollama_chat_fallback": self.cfg.allow_ollama_chat_fallback,
                 "chat_fallback_provider": self.cfg.chat_fallback_provider,
                 "embedding_provider": self.cfg.embedding_provider,
@@ -1341,6 +1589,9 @@ class MeetingWorkflow:
                 "agent1_subchunk_size": self.cfg.agent1_subchunk_size,
                 "agent1_ocr_max_captures": self.cfg.agent1_ocr_max_captures,
                 "agent1_ocr_snippet_chars": self.cfg.agent1_ocr_snippet_chars,
+                "agent1_ocr_only_chunk_chars": self.cfg.agent1_ocr_only_chunk_chars,
+                "agent1_ocr_only_overlap_pct": self.cfg.agent1_ocr_only_overlap_pct,
+                "agent1_ocr_only_max_chunks_per_capture": self.cfg.agent1_ocr_only_max_chunks_per_capture,
                 "agent2_chunk_size": self.cfg.agent2_chunk_size,
                 "agent25_chunk_size": self.cfg.agent25_chunk_size,
                 "pipeline_max_concurrency": self.cfg.pipeline_max_concurrency,
@@ -1351,6 +1602,8 @@ class MeetingWorkflow:
             "provider_calls": [],
             "runtime_logs": [],
         }
+        self._active_artifact_dir = artifact_dir
+        self._active_run_meta = run_meta
 
         self._append_log(
             run_meta,
@@ -1627,6 +1880,7 @@ class MeetingWorkflow:
         )
 
         slides = cleaned.get("slides", []) if isinstance(cleaned.get("slides"), list) else []
+        meeting_meta = cleaned.get("meeting_meta", {}) if isinstance(cleaned.get("meeting_meta"), dict) else {}
         partial_kgs: list[dict[str, Any]] = []
         chunk_inputs: list[tuple[int, list[dict[str, Any]], list[dict[str, Any]]]] = []
         total_chunks = len(timeline_chunks)
@@ -1654,26 +1908,61 @@ class MeetingWorkflow:
 
         def run_one_chunk(item: tuple[int, list[dict[str, Any]], list[dict[str, Any]]]) -> tuple[int, dict[str, Any]]:
             idx, tl_chunk, slides_subset = item
-            data = {
-                "meeting_meta": cleaned.get("meeting_meta", {}),
-                "timeline": tl_chunk,
-                "slides": slides_subset,
-            }
-            user = fill_template(AGENT2_USR, DATA=json.dumps(data, ensure_ascii=False))
-            out = self.llm.call(
-                AGENT2_SYS,
-                user,
-                json_mode=True,
-                required_keys=["entities", "topics"],
+            out = self._agent2_call_llm(
+                tl_chunk,
+                slides_subset,
+                meeting_meta,
                 tag=f"agent2_map_chunk_{idx}",
             )
-            assert isinstance(out, dict)
             return idx, out
+
+        def recover_chunk(
+            idx: int,
+            tl_chunk: list[dict[str, Any]],
+            slides_subset: list[dict[str, Any]],
+            exc: Exception,
+        ) -> dict[str, Any]:
+            chunk_label = f"{idx}/{total_chunks}"
+            if self._is_timeout_like_error(exc):
+                self._append_log(
+                    run_meta,
+                    artifact_dir,
+                    "Agent2 timeout fast-fallback",
+                    chunk=chunk_label,
+                    strategy="deterministic",
+                )
+                return self._agent2_deterministic_fallback(
+                    [],
+                    {
+                        "meeting_meta": meeting_meta,
+                        "timeline": tl_chunk,
+                        "slides": slides_subset,
+                    },
+                )
+            return self._agent2_chunk_recover(
+                tl_chunk,
+                slides_subset,
+                meeting_meta,
+                run_meta,
+                artifact_dir,
+                chunk_label=chunk_label,
+                tag_prefix=f"agent2_map_chunk_{idx}",
+            )
 
         workers = self._effective_workers(len(chunk_inputs))
         if workers == 1:
             for idx, tl_chunk, slides_subset in chunk_inputs:
-                _, out = run_one_chunk((idx, tl_chunk, slides_subset))
+                try:
+                    _, out = run_one_chunk((idx, tl_chunk, slides_subset))
+                except Exception as exc:
+                    self._append_log(
+                        run_meta,
+                        artifact_dir,
+                        "Agent2 chunk fallback",
+                        chunk=f"{idx}/{total_chunks}",
+                        error=str(exc),
+                    )
+                    out = recover_chunk(idx, tl_chunk, slides_subset, exc)
                 partial_kgs.append(out)
                 self._append_log(
                     run_meta,
@@ -1694,11 +1983,12 @@ class MeetingWorkflow:
                         self._append_log(
                             run_meta,
                             artifact_dir,
-                            "Agent2 chunk failed",
+                            "Agent2 chunk fallback",
                             chunk=f"{idx}/{total_chunks}",
                             error=str(exc),
                         )
-                        raise
+                        _, tl_chunk, slides_subset = chunk_inputs[idx - 1]
+                        out = recover_chunk(idx, tl_chunk, slides_subset, exc)
                     results[idx] = out
                     self._append_log(
                         run_meta,
@@ -1718,15 +2008,28 @@ class MeetingWorkflow:
                 AGENT2_REDUCE_USR,
                 PARTIAL_KGS=json.dumps(partial_kgs, ensure_ascii=False),
             )
-            reduced = self.llm.call(
-                AGENT2_REDUCE_SYS,
-                reduce_user,
-                json_mode=True,
-                required_keys=["entities", "topics"],
-                tag="agent2_reduce",
-            )
-            assert isinstance(reduced, dict)
-            kg = reduced
+            try:
+                reduced = self.llm.call(
+                    AGENT2_REDUCE_SYS,
+                    reduce_user,
+                    json_mode=True,
+                    required_keys=["entities", "topics"],
+                    tag="agent2_reduce",
+                    max_retries=1,
+                )
+                assert isinstance(reduced, dict)
+                kg = reduced
+            except Exception as exc:
+                self._append_log(
+                    run_meta,
+                    artifact_dir,
+                    "Agent2 reduce fallback",
+                    strategy="deterministic",
+                    error=str(exc),
+                )
+                kg = self._agent2_deterministic_fallback(partial_kgs, cleaned)
+
+        kg = self._normalize_agent2_kg(kg)
 
         topics = kg.get("topics", []) if isinstance(kg.get("topics"), list) else []
         if not topics:
@@ -1737,6 +2040,7 @@ class MeetingWorkflow:
                 action="deterministic_fallback",
             )
             kg = self._agent2_deterministic_fallback(partial_kgs, cleaned)
+            kg = self._normalize_agent2_kg(kg)
             topics = kg.get("topics", []) if isinstance(kg.get("topics"), list) else []
 
         if not topics:
@@ -2086,6 +2390,15 @@ class MeetingWorkflow:
 
         partial_images: list[dict[str, Any]] = []
         topic_no_vec = sanitize_kg_for_output({"topics": topics}).get("topics", [])
+        use_deterministic_agent25 = self.llm.is_fallback_only_mode()
+        if use_deterministic_agent25:
+            self._append_log(
+                run_meta,
+                artifact_dir,
+                "Agent2.5 llm skipped",
+                reason="ollama_only_mode",
+                action="deterministic_mapper",
+            )
         chunk_inputs: list[tuple[int, list[dict[str, Any]]]] = []
         total_chunks = len(capture_chunks)
         for idx, cap_chunk in enumerate(capture_chunks, start=1):
@@ -2104,7 +2417,10 @@ class MeetingWorkflow:
 
         def run_one_chunk(item: tuple[int, list[dict[str, Any]]]) -> tuple[int, dict[str, Any]]:
             idx, cap_chunk = item
-            out = self._agent25_call_llm(cap_chunk, topic_no_vec, tag=f"agent25_map_chunk_{idx}")
+            if use_deterministic_agent25:
+                out = self._agent25_chunk_fallback(cap_chunk, topic_no_vec)
+            else:
+                out = self._agent25_call_llm(cap_chunk, topic_no_vec, tag=f"agent25_map_chunk_{idx}")
             return idx, out
 
         workers = self._effective_workers(len(chunk_inputs))
@@ -2198,6 +2514,8 @@ class MeetingWorkflow:
         self._append_log(run_meta, artifact_dir, "Agent2.5 reduce start", partials=len(partial_images))
         if len(partial_images) == 1:
             merged_images = partial_images[0]
+        elif use_deterministic_agent25:
+            merged_images = merge_partial_image_outputs(partial_images)
         else:
             reduce_user = fill_template(
                 AGENT25_REDUCE_USR,
@@ -2312,6 +2630,7 @@ class MeetingWorkflow:
             manifest,
             max_per_topic=self.cfg.image_max_per_topic,
             min_file_size_kb=self.cfg.image_min_file_size_kb,
+            include_all=self.cfg.image_include_all,
         )
         image_manifest_output = {
             "image_manifest": manifest,
@@ -2784,4 +3103,16 @@ class MeetingWorkflow:
         return graph
 
     def run(self) -> WorkflowState:
-        return self.graph.invoke({})
+        try:
+            result = self.graph.invoke({})
+            return result
+        except Exception as exc:
+            if self._active_run_meta is not None:
+                self._active_run_meta["provider_calls"] = list(self.llm.call_log)
+                self._active_run_meta["failed_at"] = datetime.now().isoformat()
+                self._active_run_meta["error"] = str(exc)
+                self._persist_live_run_meta()
+            raise
+        finally:
+            self._active_artifact_dir = None
+            self._active_run_meta = None

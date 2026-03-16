@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from typing import Any
+from typing import Any, Callable
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama, OllamaEmbeddings
@@ -72,22 +72,43 @@ def validate_keys(obj: dict[str, Any], required_keys: list[str], label: str) -> 
         raise PipelineError(f"{label} missing keys: {missing}")
 
 
+def _coerce_to_json_object(data: Any) -> dict[str, Any] | None:
+    if isinstance(data, dict):
+        return data
+
+    if isinstance(data, str):
+        nested = extract_json_candidate(data)
+        if nested:
+            try:
+                return _coerce_to_json_object(json.loads(nested))
+            except Exception:
+                return None
+        return None
+
+    if isinstance(data, list):
+        dict_items = [item for item in data if isinstance(item, dict)]
+        if len(dict_items) == 1:
+            return dict_items[0]
+
+        # Some models wrap the object in a single-item list or emit a list of
+        # fragments where one element contains the full schema we need.
+        for item in data:
+            coerced = _coerce_to_json_object(item)
+            if coerced is not None:
+                return coerced
+
+    return None
+
+
 def parse_json_or_raise(text: str, label: str) -> dict[str, Any]:
     candidate = extract_json_candidate(text)
     if not candidate:
         raise PipelineError(f"{label}: no valid JSON object found")
     data = json.loads(candidate)
-    if isinstance(data, str):
-        nested = extract_json_candidate(data)
-        if nested:
-            data = json.loads(nested)
-    if isinstance(data, list):
-        dict_items = [item for item in data if isinstance(item, dict)]
-        if len(dict_items) == 1:
-            data = dict_items[0]
-    if not isinstance(data, dict):
+    coerced = _coerce_to_json_object(data)
+    if coerced is None:
         raise PipelineError(f"{label}: JSON root must be object")
-    return data
+    return coerced
 
 
 def is_token_limit_error(exc: Exception) -> bool:
@@ -155,6 +176,7 @@ class LLMClient:
         self._ollama_sdk_client: Any | None = None
         self._ollama_direct_mode = False
         self._ollama_direct_mode_notice_printed = False
+        self._call_log_hook: Callable[[list[dict[str, Any]]], None] | None = None
 
         if cfg.typhoon_api_key and cfg.typhoon_base_url:
             self.typhoon_llm = ChatOpenAI(
@@ -219,6 +241,21 @@ class LLMClient:
                 "Typhoon is unavailable and chat fallback is disabled "
                 "(set ALLOW_CHAT_FALLBACK=true for fallback mode)."
             )
+
+    def set_call_log_hook(self, hook: Callable[[list[dict[str, Any]]], None] | None) -> None:
+        self._call_log_hook = hook
+
+    def is_fallback_only_mode(self) -> bool:
+        return bool(self._fallback_only_mode)
+
+    def _record_call(self, entry: dict[str, Any]) -> None:
+        self.call_log.append(entry)
+        if self._call_log_hook is None:
+            return
+        try:
+            self._call_log_hook(self.call_log)
+        except Exception:
+            pass
 
     def _providers_in_order(self) -> list[str]:
         providers: list[str] = []
@@ -425,7 +462,7 @@ class LLMClient:
                 raw = self._invoke_by_provider(provider, JSON_REPAIR_SYS, repair_prompt, json_mode=True)
                 parsed = parse_json_or_raise(raw, f"{tag}/repair-{provider}")
                 validate_keys(parsed, required_keys, f"{tag}/repair-{provider}")
-                self.call_log.append(
+                self._record_call(
                     {
                         "tag": tag,
                         "provider": provider,
@@ -437,7 +474,7 @@ class LLMClient:
                 )
                 return parsed
             except Exception as exc:
-                self.call_log.append(
+                self._record_call(
                     {
                         "tag": tag,
                         "provider": provider,
@@ -458,11 +495,16 @@ class LLMClient:
         json_mode: bool,
         required_keys: list[str] | None,
         tag: str,
+        max_retries: int | None = None,
     ) -> dict[str, Any] | str:
         last_error: Exception | None = None
         required = required_keys or []
+        effective_retries = max(
+            1,
+            int(self.cfg.llm_max_retries if max_retries is None else max_retries),
+        )
 
-        for attempt in range(1, self.cfg.llm_max_retries + 1):
+        for attempt in range(1, effective_retries + 1):
             for provider in self._providers_in_order():
                 start = time.time()
                 raw = ""
@@ -471,7 +513,7 @@ class LLMClient:
                     raw = self._invoke_by_provider(provider, system, user, json_mode=json_mode)
 
                     if not json_mode:
-                        self.call_log.append(
+                        self._record_call(
                             {
                                 "tag": tag,
                                 "provider": provider,
@@ -487,7 +529,7 @@ class LLMClient:
                     if required:
                         validate_keys(parsed, required, tag)
 
-                    self.call_log.append(
+                    self._record_call(
                         {
                             "tag": tag,
                             "provider": provider,
@@ -500,7 +542,7 @@ class LLMClient:
                     return parsed
                 except Exception as exc:
                     last_error = exc
-                    self.call_log.append(
+                    self._record_call(
                         {
                             "tag": tag,
                             "provider": provider,

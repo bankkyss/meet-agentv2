@@ -3,7 +3,11 @@ from __future__ import annotations
 import argparse
 import os
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv() -> bool:  # type: ignore[no-redef]
+        return False
 
 from pipeline_utils import PipelineConfig, env_bool, env_int
 from workflow_graph import MeetingWorkflow
@@ -54,6 +58,7 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         image_embed_mode=os.getenv("IMAGE_EMBED_MODE", "base64").strip().lower(),
         image_max_per_topic=env_int("IMAGE_MAX_PER_TOPIC", 4),
         image_min_file_size_kb=env_int("IMAGE_MIN_FILE_SIZE_KB", 30),
+        image_include_all=env_bool("IMAGE_INCLUDE_ALL", False),
         output_html_path=(args.output or os.getenv("OUTPUT_HTML_PATH", "./output/meeting_report.html")).strip(),
         transcript_path=os.getenv("TRANSCRIPT_PATH", "./data/transcript_2025-01-04.json").strip(),
         config_path=os.getenv("CONFIG_PATH", "./data/config_2025-01-04.json").strip(),
@@ -73,6 +78,11 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         agent1_subchunk_size=env_int("AGENT1_SUBCHUNK_SIZE", 40),
         agent1_ocr_max_captures=max(1, env_int("AGENT1_OCR_MAX_CAPTURES", 3)),
         agent1_ocr_snippet_chars=max(120, env_int("AGENT1_OCR_SNIPPET_CHARS", 220)),
+        agent1_ocr_only_chunk_chars=max(120, env_int("AGENT1_OCR_ONLY_CHUNK_CHARS", 420)),
+        agent1_ocr_only_overlap_pct=max(0, min(50, env_int("AGENT1_OCR_ONLY_OVERLAP_PCT", 8))),
+        agent1_ocr_only_max_chunks_per_capture=max(
+            1, env_int("AGENT1_OCR_ONLY_MAX_CHUNKS_PER_CAPTURE", 2)
+        ),
         agent2_chunk_size=env_int("AGENT2_CHUNK_SIZE", 160),
         agent25_chunk_size=env_int("AGENT25_CHUNK_SIZE", 12),
         resume_artifact_dir=(args.resume_artifact_dir or "").strip(),
